@@ -1,0 +1,24 @@
+export const CLASSES = [
+  { id: 1,  name: "RPL 1", pdf: "/yearbook/RPL-1.pdf",  cover: "/yearbook/covers/RPL-1.jpg",  hue: "#2B4C7E", palette: {"primary":"#473911","secondary":"#7a5d53","accent":"#615532","left":"#3f3210","right":"#7a5d53"} },
+  { id: 2,  name: "RPL 2", pdf: "/yearbook/RPL-2.pdf",  cover: "/yearbook/covers/RPL-2.jpg",  hue: "#1A365D", palette: {"primary":"#405289","secondary":"#c0c9e4","accent":"#5b6a9a","left":"#42558d","right":"#c0c9e4"} },
+  { id: 3,  name: "TKJ 1", pdf: "/yearbook/TKJ-1.pdf",  cover: "/yearbook/covers/TKJ-1.jpg",  hue: "#276749", palette: {"primary":"#8699ac","secondary":"#2b3745","accent":"#97a7b8","left":"#a78773","right":"#2c3947"} },
+  { id: 4,  name: "TKJ 2", pdf: "/yearbook/TKJ-2.pdf",  cover: "/yearbook/covers/TKJ-2.jpg",  hue: "#22543D", palette: {"primary":"#2e3418","secondary":"#737a52","accent":"#4b5038","left":"#303719","right":"#737a52"} },
+  { id: 5,  name: "MP 1",  pdf: "/yearbook/MP-1.pdf",   cover: "/yearbook/covers/MP-1.jpg",   hue: "#C05621", palette: {"primary":"#896441","secondary":"#422f1d","accent":"#9a7a5c","left":"#836953","right":"#422f1d"} },
+  { id: 6,  name: "MP 2",  pdf: "/yearbook/MP-2.pdf",   cover: "/yearbook/covers/MP-2.jpg",   hue: "#9B2C2C", palette: {"primary":"#786451","secondary":"#251d1b","accent":"#8b7a69","left":"#786553","right":"#251d1b"} },
+  { id: 7,  name: "DPB 1", pdf: "/yearbook/DPB-1.pdf",  cover: "/yearbook/covers/DPB-1.jpg",  hue: "#553C9A", palette: {"primary":"#d3b205","secondary":"#8697af","accent":"#d5b50f","left":"#d3b205","right":"#4493d0"} },
+  { id: 8,  name: "DPB 2", pdf: "/yearbook/DPB-2.pdf",  cover: "/yearbook/covers/DPB-2.jpg",  hue: "#44337A", palette: {"primary":"#2c2e40","secondary":"#835d4e","accent":"#4a4b5b","left":"#825c4d","right":"#121e2b"} },
+  { id: 9,  name: "DPB 3", pdf: "/yearbook/DPB-3.pdf",  cover: "/yearbook/covers/DPB-3.jpg",  hue: "#702459", palette: {"primary":"#560a0a","secondary":"#6b6767","accent":"#6e2c2c","left":"#451c1d","right":"#6b6767"} },
+  { id: 10, name: "AK 1",  pdf: "/yearbook/AK-1.pdf",   cover: "/yearbook/covers/AK-1.jpg",   hue: "#744210", palette: {"primary":"#af938a","secondary":"#cccccc","accent":"#baa29a","left":"#af9289","right":"#cccccc"} },
+  { id: 11, name: "AK 2",  pdf: "/yearbook/AK-2.pdf",   cover: "/yearbook/covers/AK-2.jpg",   hue: "#C05A00", palette: {"primary":"#cfbcb7","secondary":"#9e9491","accent":"#d1bfba","left":"#d0bfba","right":"#9e9491"} },
+  { id: 12, name: "AK 3",  pdf: "/yearbook/AK-3.pdf",   cover: "/yearbook/covers/AK-3.jpg",   hue: "#7B341E", palette: {"primary":"#886340","secondary":"#989898","accent":"#99795b","left":"#77604b","right":"#989898"} },
+  { id: 13, name: "BR 1",  pdf: "/yearbook/BR-1.pdf",   cover: "/yearbook/covers/BR-1.jpg",   hue: "#234E52", palette: {"primary":"#7b6b53","secondary":"#aa9885","accent":"#8d806b","left":"#826f54","right":"#ac9985"} },
+  { id: 14, name: "BR 2",  pdf: "/yearbook/BR-2.pdf",   cover: "/yearbook/covers/BR-2.jpg",   hue: "#1D4044", palette: {"primary":"#ad8b81","secondary":"#3b372e","accent":"#b89b93","left":"#ac8a7f","right":"#3b372e"} },
+  { id: 15, name: "BD 1",  pdf: "/yearbook/BD-1.pdf",   cover: "/yearbook/covers/BD-1.jpg",   hue: "#C53030", palette: {"primary":"#7b6553","secondary":"#aa9580","accent":"#8d7b6b","left":"#7a6554","right":"#ad9985"} },
+  { id: 16, name: "BD 2",  pdf: "/yearbook/BD-2.pdf",   cover: "/yearbook/covers/BD-2.jpg",   hue: "#9B1C1C", palette: {"primary":"#46372c","secondary":"#617754","accent":"#60534a","left":"#6d7c56","right":"#94a67a"} },
+];
+
+export const THEMES = [
+  { id: "paper",     label: "Kertas"    },
+  { id: "modern",    label: "Modern"    },
+  { id: "editorial", label: "Editorial" },
+];
