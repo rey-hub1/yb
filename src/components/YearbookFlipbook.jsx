@@ -129,6 +129,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
   const [displayedThemeStyle, setDisplayedThemeStyle] = useState(viewerThemeStyle);
   const [fadingThemeStyle, setFadingThemeStyle] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFlipping, setIsFlipping] = useState(false);
   const flipBookRef = useRef(null);
   const overlayRef = useRef(null);
   const backgroundTimeoutRef = useRef(null);
@@ -339,7 +340,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
           loading={null}
         >
           {documentReady && !error && numPages && (
-            <div className="yb-book-shell" style={{ transform: `scale(${scale})` }}>
+            <div className={`yb-book-shell${isFlipping ? " is-flipping" : ""}`} style={{ transform: `scale(${scale})` }}>
               <HTMLFlipBook
                 ref={flipBookRef}
                 width={PAGE_W} height={PAGE_H}
@@ -351,6 +352,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
                 showPageCorners={true} disableFlipByClick={false}
                 usePortrait={false} mobileScrollSupport={true}
                 onFlip={(e) => setCurrentPage(e.data)}
+                onChangeState={(e) => setIsFlipping(e.data === "flipping" || e.data === "user_fold")}
                 className="yb-flipbook"
               >
                 {Array.from({ length: numPages }, (_, i) => (
@@ -718,7 +720,7 @@ export default function YearbookApp() {
 
         <footer className="yb-footer">
           <div className="yb-footer-divider" aria-hidden="true">
-            <span /><em>fin</em><span />
+            <span /><em>rey</em><span />
           </div>
           <img src="/logo.png" alt="" className="yb-footer-logo" onError={e => e.target.style.display='none'} />
           <p className="yb-footer-motto">ini milik kita, untuk selamanya</p>
@@ -1621,21 +1623,23 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   filter: blur(14px);
   pointer-events: none; z-index: -1;
 }
-/* center gutter seam */
+/* center gutter seam — cuma muncul pas buku diam, sembunyi saat flip */
 .yb-book-shell::after {
   content: '';
   position: absolute; top: 0; left: 50%;
   transform: translateX(-50%);
-  width: 40px; height: 100%;
+  width: 30px; height: 100%;
   background: linear-gradient(to right,
     transparent 0%,
-    rgba(0,0,0,0.14) 32%,
-    rgba(0,0,0,0.3) 50%,
-    rgba(0,0,0,0.14) 68%,
+    rgba(0,0,0,0.1) 36%,
+    rgba(0,0,0,0.22) 50%,
+    rgba(0,0,0,0.1) 64%,
     transparent 100%
   );
   pointer-events: none; z-index: 10;
+  opacity: 1; transition: opacity 0.25s ease;
 }
+.yb-book-shell.is-flipping::after { opacity: 0; }
 
 /* ── Loading ─────────────────────────────── */
 .yb-loading-state {
