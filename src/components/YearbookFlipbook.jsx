@@ -609,7 +609,7 @@ export default function YearbookApp() {
               <img src="/logo.png" alt="Logo" className="yb-navbar-logo" />
               <span className="yb-navbar-brand-text">
                 Yearbook
-                <em>SMKN 2 Purwakarta · 2023</em>
+                <em>SMKN 2 Purwakarta · 2026</em>
               </span>
             </span>
             <div className="yb-nav-actions">
@@ -630,17 +630,17 @@ export default function YearbookApp() {
 
         {/* ── Hero ────────────────────────────── */}
         <header className="yb-hero" onMouseMove={handleHeroMouseMove}>
-          <span className="yb-hero-ghost" aria-hidden="true" style={{ transform: "translate(calc(-50% + var(--px, 0) * 14px), calc(-50% + var(--py, 0) * 14px))" }}>2023</span>
+          <span className="yb-hero-ghost" aria-hidden="true" style={{ transform: "translate(calc(-50% + var(--px, 0) * 14px), calc(-50% + var(--py, 0) * 14px))" }}>2026</span>
           <div className="yb-hero-inner" style={{ transform: "translate(calc(var(--px, 0) * -20px), calc(var(--py, 0) * -20px))", transition: "transform 0.1s ease-out" }}>
             <div className="yb-tape yb-tape--left"  aria-hidden="true" style={{ transform: "rotate(-3deg) translate(calc(var(--px, 0) * -30px), calc(var(--py, 0) * -30px))" }} />
             <div className="yb-tape yb-tape--right" aria-hidden="true" style={{ transform: "rotate(4deg) translate(calc(var(--px, 0) * 30px), calc(var(--py, 0) * 30px))" }} />
 
-            <img src="/logo.png" alt="Logo 2023" className="yb-hero-logo" />
+            <img src="/logo.png" alt="Logo 2026" className="yb-hero-logo" />
 
             <p className="yb-hero-meta">
               <span>Vol. 01</span>
               <span className="yb-hero-meta-dot" />
-              <span>Angkatan 2023</span>
+              <span>Angkatan 2026</span>
               <span className="yb-hero-meta-dot" />
               <span>SMKN 2 Purwakarta</span>
             </p>
@@ -670,7 +670,7 @@ export default function YearbookApp() {
           </p>
           <div className="yb-foreword-sign">
             <span className="yb-foreword-rule" />
-            <span className="yb-foreword-author">Keluarga Besar Angkatan 2023</span>
+            <span className="yb-foreword-author">mahawaliya pradibta</span>
           </div>
         </section>
 
@@ -729,12 +729,12 @@ export default function YearbookApp() {
             <span className="yb-footer-dot" />
             <span>Yearbook Vol. 01</span>
             <span className="yb-footer-dot" />
-            <span>2023</span>
+            <span>2026</span>
           </p>
           <button onClick={navigateToAdmin} className="yb-footer-admin">
             Kelola Palet Warna (Admin)
           </button>
-          <p className="yb-footer-copy">&copy; 2023 &middot; Kenangan tak pernah pudar</p>
+          <p className="yb-footer-copy">&copy; 2026 &middot; Kenangan tak pernah pudar</p>
         </footer>
       </div>
 
