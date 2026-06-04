@@ -15,10 +15,7 @@ import {
 } from "../utils/colorExtractor";
 import AdminPanel from "./AdminPanel";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 const PAGE_W = 520;
 const PAGE_H = 740;
@@ -37,9 +34,16 @@ function useBookScale() {
   };
   const [scale, setScale] = useState(calc);
   useEffect(() => {
-    const fn = () => setScale(calc());
+    let timeoutId;
+    const fn = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => setScale(calc()), 100);
+    };
     window.addEventListener("resize", fn);
-    return () => window.removeEventListener("resize", fn);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener("resize", fn);
+    };
   }, []);
   return scale;
 }
@@ -119,6 +123,7 @@ function BookCoverThumbnail({ cover, hue }) {
 
 // ─── Flipbook Viewer ──────────────────────────────────────────────────────────
 function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
+  const viewPdf = classData.pdf.replace(".pdf", "-optimized.pdf");
   const [numPages, setNumPages]   = useState(null);
   const [documentReady, setDocumentReady] = useState(false);
   const [firstPageReady, setFirstPageReady] = useState(false);
@@ -183,7 +188,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
     setSpreadThemeStyle(viewerThemeStyle);
     setDisplayedThemeStyle(viewerThemeStyle);
     setFadingThemeStyle(null);
-  }, [classData.pdf]);
+  }, [viewPdf]);
 
   useEffect(() => {
     setSpreadThemeStyle(viewerThemeStyle);
@@ -217,8 +222,8 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
     let cancelled = false;
 
     Promise.all([
-      extractPdfPalette(classData.pdf, left, classData.hue),
-      right ? extractPdfPalette(classData.pdf, right, classData.hue) : Promise.resolve(null),
+      extractPdfPalette(viewPdf, left, classData.hue),
+      right ? extractPdfPalette(viewPdf, right, classData.hue) : Promise.resolve(null),
     ]).then(([leftPalette, rightPalette]) => {
       if (cancelled || !leftPalette) return;
       setSpreadThemeStyle(getViewerThemeStyle(theme, buildSpreadPalette(leftPalette, rightPalette)));
@@ -227,7 +232,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
     return () => {
       cancelled = true;
     };
-  }, [classData.hue, classData.pdf, currentPage, numPages, theme]);
+  }, [classData.hue, viewPdf, currentPage, numPages, theme]);
 
   useEffect(() => {
     if (!spreadThemeStyle) return;
@@ -333,7 +338,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
           </div>
         )}
         <Document
-          file={classData.pdf}
+          file={viewPdf}
           onLoadSuccess={handleLoadSuccess}
           onLoadProgress={handleLoadProgress}
           onLoadError={handleLoadError}
@@ -532,14 +537,7 @@ export default function YearbookApp() {
     }
   };
 
-  const handleHeroMouseMove = (e) => {
-    const { clientX, clientY, currentTarget } = e;
-    const { left, top, width, height } = currentTarget.getBoundingClientRect();
-    const x = (clientX - left) / width - 0.5;
-    const y = (clientY - top) / height - 0.5;
-    currentTarget.style.setProperty("--px", x);
-    currentTarget.style.setProperty("--py", y);
-  };
+
 
 
   useEffect(() => {
@@ -591,6 +589,7 @@ export default function YearbookApp() {
                   frameBorder="0" 
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                   allowFullScreen
+                  loading="lazy"
                 ></iframe>
               </div>
             </div>
@@ -629,11 +628,11 @@ export default function YearbookApp() {
         </nav>
 
         {/* ── Hero ────────────────────────────── */}
-        <header className="yb-hero" onMouseMove={handleHeroMouseMove}>
-          <span className="yb-hero-ghost" aria-hidden="true" style={{ transform: "translate(calc(-50% + var(--px, 0) * 14px), calc(-50% + var(--py, 0) * 14px))" }}>2026</span>
-          <div className="yb-hero-inner" style={{ transform: "translate(calc(var(--px, 0) * -20px), calc(var(--py, 0) * -20px))", transition: "transform 0.1s ease-out" }}>
-            <div className="yb-tape yb-tape--left"  aria-hidden="true" style={{ transform: "rotate(-3deg) translate(calc(var(--px, 0) * -30px), calc(var(--py, 0) * -30px))" }} />
-            <div className="yb-tape yb-tape--right" aria-hidden="true" style={{ transform: "rotate(4deg) translate(calc(var(--px, 0) * 30px), calc(var(--py, 0) * 30px))" }} />
+        <header className="yb-hero">
+          <span className="yb-hero-ghost" aria-hidden="true" style={{ transform: "translate(-50%, -50%)" }}>2026</span>
+          <div className="yb-hero-inner">
+            <div className="yb-tape yb-tape--left"  aria-hidden="true" style={{ transform: "rotate(-3deg)" }} />
+            <div className="yb-tape yb-tape--right" aria-hidden="true" style={{ transform: "rotate(4deg)" }} />
 
             <img src="/logo.png" alt="Logo 2026" className="yb-hero-logo" />
 
@@ -645,7 +644,7 @@ export default function YearbookApp() {
               <span>SMKN 2 Purwakarta</span>
             </p>
 
-            <h1 className="yb-hero-title" style={{ transform: "translate(calc(var(--px, 0) * 40px), calc(var(--py, 0) * 40px))" }}>
+            <h1 className="yb-hero-title">
               Year<em>book</em>
             </h1>
 
@@ -670,7 +669,7 @@ export default function YearbookApp() {
           </p>
           <div className="yb-foreword-sign">
             <span className="yb-foreword-rule" />
-            <span className="yb-foreword-author">mahawaliya pradibta</span>
+            <span className="yb-foreword-author">mahawaluya pangestu</span>
           </div>
         </section>
 
@@ -690,7 +689,7 @@ export default function YearbookApp() {
                 <button
                   key={cls.id}
                   onClick={() => setSelected(cls)}
-                  onMouseEnter={() => fetch(cls.pdf, { priority: "low" }).catch(() => {})}
+                  onMouseEnter={() => fetch(cls.pdf.replace(".pdf", "-optimized.pdf"), { priority: "low" }).catch(() => {})}
                   className="yb-card"
                   style={{
                     ...getCardStyle(cls, i, "paper", extractedPalettes),
