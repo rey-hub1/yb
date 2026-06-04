@@ -317,7 +317,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
           <div className="yb-loading-state">
             <div className="yb-spinner" />
             <p className="yb-loading-label">
-              ini milik kita untuk selamanya
+              ini milik kita, untuk selamanya
             </p>
             <div className="yb-loading-bar" aria-hidden="true">
               <span style={{ width: `${Math.max(loadProgress, documentReady ? 100 : 6)}%` }} />
@@ -467,15 +467,12 @@ function SplashScreen({ onEnter }) {
       <div className="yb-splash-mosaic">
         {CLASSES.map((cls, i) => (
           <div key={cls.id} className="yb-splash-mosaic-item" style={{ "--i": i }}>
-            <div className="yb-splash-book-spine" style={{ background: cls.hue }} />
-            <div className="yb-splash-book-face" style={{ background: cls.hue }}>
-              {cls.cover && (
-                <img src={cls.cover} alt="" loading="lazy" decoding="async"
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  onError={e => { e.target.style.display = "none"; }}
-                />
-              )}
-            </div>
+            {cls.cover && (
+              <img src={cls.cover} alt="" loading="lazy" decoding="async"
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                onError={e => { e.target.style.display = "none"; }}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -491,7 +488,7 @@ function SplashScreen({ onEnter }) {
           <span className="yb-splash-eyebrow-rule" />
         </p>
         <h1 className="yb-splash-title" style={{ "--d": "0.34s" }}>Year<em>book</em></h1>
-        <p className="yb-splash-sub" style={{ "--d": "0.5s" }}>ini milik kita untuk selamanya</p>
+        <p className="yb-splash-sub" style={{ "--d": "0.5s" }}>ini milik kita, untuk selamanya</p>
         <button className="yb-splash-btn yb-splash-btn--ready" style={{ "--d": "0.64s" }} onClick={handleEnter}>
           <span>Buka Yearbook</span>
           <span className="yb-splash-btn-arrow">→</span>
@@ -654,7 +651,7 @@ export default function YearbookApp() {
               <span /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span />
             </div>
 
-            <p className="yb-hero-sub">ini milik kita untuk selamanya</p>
+            <p className="yb-hero-sub">ini milik kita, untuk selamanya</p>
 
             <a href="#kelas" className="yb-hero-scroll" aria-label="Gulir ke daftar kelas">
               <span>Lihat Kelas</span>
@@ -667,7 +664,7 @@ export default function YearbookApp() {
         <section className="yb-foreword">
           <span className="yb-foreword-mark" aria-hidden="true">&ldquo;</span>
           <p className="yb-foreword-quote">
-            Empat tahun, ribuan tawa, dan satu cerita yang kita tulis bersama. Halaman boleh menua, tapi kenangan ini milik kita untuk selamanya.
+            Tiga tahun, ribuan tawa, dan satu cerita yang kita tulis bersama. Halaman boleh menua, tapi kenangan ini milik kita, untuk selamanya.
           </p>
           <div className="yb-foreword-sign">
             <span className="yb-foreword-rule" />
@@ -724,7 +721,7 @@ export default function YearbookApp() {
             <span /><em>fin</em><span />
           </div>
           <img src="/logo.png" alt="" className="yb-footer-logo" onError={e => e.target.style.display='none'} />
-          <p className="yb-footer-motto">ini milik kita untuk selamanya</p>
+          <p className="yb-footer-motto">ini milik kita, untuk selamanya</p>
           <p className="yb-footer-meta">
             <span>SMKN 2 Purwakarta</span>
             <span className="yb-footer-dot" />
@@ -1851,18 +1848,18 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   pointer-events: none;
 }
 
-/* ── Cover mosaic bg — slow drift + warm desaturation ── */
+/* ── Cover mosaic bg — slow drift ── */
 .yb-splash-mosaic {
   position: absolute; inset: -2%;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(4, 1fr);
   gap: 4px;
-  filter: saturate(0.85) brightness(0.9);
+  filter: saturate(0.7) brightness(0.75);
   animation: mosaicDrift 32s ease-in-out infinite alternate;
 }
 .yb-splash-mosaic-item {
-  position: relative; display: flex; overflow: hidden;
+  position: relative; overflow: hidden; background: #111;
   opacity: 0;
   animation: mosaicIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   animation-delay: calc(var(--i) * 0.045s);
@@ -1873,20 +1870,14 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   mix-blend-mode: overlay;
 }
 @keyframes mosaicIn {
-  from { opacity: 0; transform: scale(1.12); filter: blur(6px); }
-  to   { opacity: 1; transform: scale(1); filter: blur(0); }
+  from { opacity: 0; transform: scale(1.12); }
+  to   { opacity: 1; transform: scale(1); }
 }
 @keyframes mosaicDrift {
   from { transform: scale(1.04) translate(-1%, -1%); }
   to   { transform: scale(1.1) translate(1%, 1%); }
 }
-.yb-splash-book-spine {
-  width: 12%; height: 100%; flex-shrink: 0;
-  filter: brightness(0.4);
-}
-.yb-splash-book-face {
-  flex: 1; position: relative; overflow: hidden;
-}
+
 
 .yb-splash-overlay {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
@@ -2006,7 +1997,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 .yb-splash-btn:hover .yb-splash-btn-arrow { transform: translateX(5px); }
 
 @media (max-width: 600px) {
-  .yb-splash-mosaic { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(6, 1fr); }
+  .yb-splash-mosaic { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(5, 1fr); grid-auto-rows: 0; overflow: hidden; }
   .yb-splash-frame { inset: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
