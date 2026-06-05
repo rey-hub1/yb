@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, POST_MESSAGE_URL } from "../lib/supabase";
 
 const MAX_LEN = 80;
 const MAX_NAME = 18;
-const COOLDOWN_MS = 30_000;
-const LAST_KEY = "yb-kenangan-last";
 const TONES = 6; // jumlah varian warna kertas (yb-note--t0..t5)
 // warna swatch — harus sinkron sama .yb-note--t0..t5 di STYLES
 const NOTE_COLORS = [
@@ -134,35 +132,40 @@ export default function MessageWall() {
             return;
         }
 
-        const last = Number(localStorage.getItem(LAST_KEY) || 0);
-        const wait = COOLDOWN_MS - (Date.now() - last);
-        if (wait > 0) {
-            setError(
-                `Tunggu ${Math.ceil(wait / 1000)} detik sebelum nempel lagi.`,
-            );
-            return;
-        }
-        if (!supabase) {
+        if (!POST_MESSAGE_URL) {
             setError("Fitur belum dikonfigurasi (env Supabase kosong).");
             return;
         }
 
         setSending(true);
-        const { data, error: err } = await supabase
-            .from("messages")
-            .insert({ name: name.trim() || null, body: text, color: tone })
-            .select()
-            .single();
-        setSending(false);
-
-        if (err) {
-            setError("Gagal menempel. Coba lagi.");
+        let data, status;
+        try {
+            const res = await fetch(POST_MESSAGE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: name.trim() || null, body: text, color: tone }),
+            });
+            status = res.status;
+            data = await res.json();
+        } catch {
+            setSending(false);
+            setError("Gagal menempel. Periksa koneksi.");
             return;
         }
-        localStorage.setItem(LAST_KEY, String(Date.now()));
+        setSending(false);
+
+        if (status === 429) {
+            setError(data?.error ?? "Tunggu 30 detik sebelum nempel lagi.");
+            return;
+        }
+        if (status !== 200) {
+            setError(data?.error ?? "Gagal menempel. Coba lagi.");
+            return;
+        }
+
         if (data) addMessages([data], true);
         setBody("");
-        setTone(Math.floor(Math.random() * TONES)); // warna acak baru utk note berikut
+        setTone(Math.floor(Math.random() * TONES));
     };
 
     return (
