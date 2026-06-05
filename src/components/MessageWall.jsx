@@ -111,7 +111,7 @@ export default function MessageWall() {
     <section id="kenangan" className="yb-kenangan">
       <div className="yb-kenangan-head">
         <span className="yb-kenangan-kicker">tempel kenanganmu</span>
-        <h2 className="yb-kenangan-title">Kotak Kenangan</h2>
+        <h2 className="yb-kenangan-title">Sticky Memory</h2>
         <p className="yb-kenangan-sub">
           Tulis di kertas, tempel di papan. Pesan, harapan, atau salam perpisahan — boleh anonim.
         </p>

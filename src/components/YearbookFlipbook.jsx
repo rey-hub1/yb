@@ -953,7 +953,7 @@ export default function YearbookApp() {
             </span>
             <div className="yb-nav-actions">
               <a href="#kenangan" className="yb-nav-btn">
-                Kotak Kenangan
+                Sticky Memory
               </a>
               <button onClick={navigateToAdmin} className="yb-nav-btn yb-nav-btn--admin">
                 Admin
@@ -997,7 +997,7 @@ export default function YearbookApp() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
               </a>
               <a href="#kenangan" className="yb-hero-scroll" aria-label="Gulir ke kotak kenangan">
-                <span>Lihat Kotak Kenangan</span>
+                <span>Lihat Sticky Memory</span>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
               </a>
             </div>
@@ -1905,15 +1905,20 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 
 /* ── Papan tempel (masonry sticky notes) ── */
-.yb-board { columns: 3; column-gap: 22px; }
+.yb-board {
+  display: flex; flex-wrap: wrap;
+  align-items: flex-start; justify-content: center;
+  gap: 16px 14px;
+}
 .yb-board-empty {
-  column-span: all; text-align: center;
+  flex-basis: 100%; text-align: center;
   font-family: var(--yb-hand-font); font-size: 22px;
   color: var(--yb-ink-faint); padding: 28px 0;
 }
 .yb-note {
-  position: relative; break-inside: avoid;
-  margin: 14px 4px 30px; padding: 24px 20px 16px;
+  position: relative;
+  width: fit-content; min-width: 96px; max-width: 190px;
+  padding: 16px 14px 11px;
   transform: rotate(var(--rot, 0deg));
   box-shadow: 2px 5px 14px rgba(60, 42, 24, 0.18);
   transition: transform 0.22s ease, box-shadow 0.22s ease;
@@ -1925,8 +1930,8 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 /* selotip washi */
 .yb-note-tape {
-  position: absolute; top: -11px; left: 50%;
-  width: 84px; height: 26px; margin-left: -42px;
+  position: absolute; top: -9px; left: 50%;
+  width: 58px; height: 19px; margin-left: -29px;
   transform: rotate(var(--tape-rot, 0deg));
   background: rgba(255, 255, 255, 0.45);
   border-left: 1px dashed rgba(255,255,255,0.55);
@@ -1935,20 +1940,20 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   backdrop-filter: blur(1px);
 }
 .yb-note-body {
-  margin: 0 0 16px; color: #33291d;
-  font-family: var(--yb-hand-font); font-size: 21px; line-height: 1.45;
-  white-space: pre-wrap; word-break: break-word;
+  margin: 0 0 11px; color: #33291d;
+  font-family: var(--yb-hand-font); font-size: 16px; line-height: 1.4;
+  white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
 }
 .yb-note-meta {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-  border-top: 1px dashed rgba(80, 60, 40, 0.28); padding-top: 8px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  border-top: 1px dashed rgba(80, 60, 40, 0.28); padding-top: 6px;
 }
 .yb-note-from {
-  font-family: var(--yb-hand-font); font-size: 20px; font-weight: 700;
+  font-family: var(--yb-hand-font); font-size: 15px; font-weight: 700;
   color: var(--yb-accent);
 }
 .yb-note-time {
-  font-family: var(--yb-page-font); font-size: 10px; letter-spacing: 0.04em;
+  font-family: var(--yb-page-font); font-size: 8.5px; letter-spacing: 0.04em;
   color: rgba(80, 60, 40, 0.5); text-transform: uppercase; white-space: nowrap;
 }
 /* varian warna kertas */
@@ -1959,9 +1964,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 .yb-note--t4 { background: #d6e6f4; }
 .yb-note--t5 { background: #ece2f7; }
 
-@media (max-width: 880px) { .yb-board { columns: 2; } }
 @media (max-width: 540px) {
-  .yb-board { columns: 1; }
   .yb-notepad { max-width: 100%; }
 }
 
