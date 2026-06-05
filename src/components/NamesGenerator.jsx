@@ -158,7 +158,7 @@ export default function NamesGenerator() {
           textTransform: 'uppercase', color: hue,
           fontWeight: 700, margin: '0 0 10px',
         }}>
-          Angkatan 2026
+          Mahawaluya Pangestu
         </p>
         <h1 style={{
           fontFamily: '"DM Serif Display", serif',
@@ -190,7 +190,7 @@ export default function NamesGenerator() {
               {col.map((student, rowIdx) => (
                 <div key={rowIdx} style={{
                   display: 'flex', alignItems: 'baseline', gap: 5,
-                  padding: '3.5px 0', borderBottom: '1px solid rgba(0,0,0,0.06)',
+                  padding: '5px 0 7px', borderBottom: '1px solid rgba(0,0,0,0.06)',
                 }}>
                   <span style={{
                     fontFamily: '"Plus Jakarta Sans", sans-serif',

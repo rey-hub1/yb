@@ -443,6 +443,60 @@ const SVG_ICONS = [
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v18m9-9H3m15.364-6.364l-12.728 12.728m0-12.728l12.728 12.728"/></svg>
 ];
 
+const ANGKATAN_PHOTOS = ['/angkatan/1.jpg', '/angkatan/2.jpg'];
+
+function HeroPhotos() {
+  const [current, setCurrent] = useState(0);
+  const touchStartX = useRef(null);
+  const total = ANGKATAN_PHOTOS.length;
+
+  const prev = () => setCurrent(i => (i - 1 + total) % total);
+  const next = () => setCurrent(i => (i + 1) % total);
+
+  const onTouchStart = e => { touchStartX.current = e.touches[0].clientX; };
+  const onTouchEnd   = e => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(dx) > 40) dx < 0 ? next() : prev();
+    touchStartX.current = null;
+  };
+
+  return (
+    <div className="yb-hero-photos">
+      {/* Desktop: side by side */}
+      <div className="yb-hero-photos-row">
+        {ANGKATAN_PHOTOS.map((src, i) => (
+          <div key={i} className={`yb-hero-photo-wrap yb-hero-photo-wrap--${i}`}>
+            <img src={src} alt={`Foto Angkatan ${i + 1}`} className="yb-hero-photo" loading="eager" draggable="false" />
+          </div>
+        ))}
+      </div>
+      {/* Mobile: carousel */}
+      <div className="yb-hero-photos-carousel" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <div className="yb-hero-photos-track" style={{ transform: `translateX(-${current * 100}%)` }}>
+          {ANGKATAN_PHOTOS.map((src, i) => (
+            <div key={i} className="yb-hero-photo-slide">
+              <div className={`yb-hero-photo-wrap yb-hero-photo-wrap--${i}`}>
+                <img src={src} alt={`Foto Angkatan ${i + 1}`} className="yb-hero-photo" loading="eager" draggable="false" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="yb-hero-photos-dots">
+          {ANGKATAN_PHOTOS.map((_, i) => (
+            <button
+              key={i}
+              className={`yb-hero-photos-dot${i === current ? ' active' : ''}`}
+              onClick={() => setCurrent(i)}
+              aria-label={`Foto angkatan ${i + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FloatingParticles() {
   const [particles, setParticles] = useState([]);
   
@@ -551,7 +605,6 @@ export default function YearbookApp() {
     return initial;
   });
   const [entered, setEntered]   = useState(() => window.location.hash === "#admin");
-  const [isPlaying, setIsPlaying] = useState(false);
   const [showVideoBanner, setShowVideoBanner] = useState(() => {
     return localStorage.getItem('yb-video-dismissed-v2') !== '1';
   });
@@ -559,26 +612,11 @@ export default function YearbookApp() {
     return window.location.hash === "#admin" ? "admin" : "user";
   });
   const [lowEnd] = useState(isLowEndDevice);
-  const audioRef = useRef(null);
 
   useEffect(() => {
     document.documentElement.style.scrollBehavior = lowEnd ? 'auto' : 'smooth';
     return () => { document.documentElement.style.scrollBehavior = ''; };
   }, [lowEnd]);
-
-  const toggleAudio = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play().catch(e => console.log("Audio play blocked", e));
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-
-
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -613,8 +651,6 @@ export default function YearbookApp() {
   return (
     <>
       <style>{STYLES}</style>
-      <audio ref={audioRef} src="https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1cb8.mp3" loop />
-      
       <div className="yb-page">
         {!lowEnd && <FloatingParticles />}
       
@@ -652,10 +688,6 @@ export default function YearbookApp() {
               </span>
             </span>
             <div className="yb-nav-actions">
-              <button onClick={toggleAudio} className="yb-nav-btn" title="Putar / jeda musik" aria-label="Putar atau jeda musik">
-                <span className="yb-nav-ico">{isPlaying ? "⏸" : "▶"}</span>
-                <span className="yb-nav-lbl">BGM</span>
-              </button>
               <button onClick={navigateToAdmin} className="yb-nav-btn yb-nav-btn--admin">
                 Admin
               </button>
@@ -675,7 +707,7 @@ export default function YearbookApp() {
             <p className="yb-hero-meta">
               <span>Vol. 01</span>
               <span className="yb-hero-meta-dot" />
-              <span>Angkatan 2026</span>
+              <span>Mahawaluya Pangestu</span>
               <span className="yb-hero-meta-dot" />
               <span>SMKN 2 Purwakarta</span>
             </p>
@@ -689,6 +721,8 @@ export default function YearbookApp() {
             </div>
 
             <p className="yb-hero-sub">ini milik kita, untuk selamanya</p>
+
+            <HeroPhotos />
 
             <a href="#kelas" className="yb-hero-scroll" aria-label="Gulir ke daftar kelas">
               <span>Lihat Kelas</span>
@@ -1168,6 +1202,91 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 @keyframes scrollBob {
   0%, 100% { transform: translateY(0); opacity: 0.6; }
   50%      { transform: translateY(5px); opacity: 1; }
+}
+
+/* ── Hero Photos ─────────────────────────── */
+.yb-hero-photos {
+  margin: 28px 0 24px;
+  animation: heroRise 1s cubic-bezier(0.16,1,0.3,1) 0.55s backwards;
+}
+
+/* Desktop: side by side */
+.yb-hero-photos-row {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+.yb-hero-photos-carousel { display: none; }
+
+.yb-hero-photo-wrap {
+  position: relative;
+  background: #fff;
+  padding: 8px 8px 30px;
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.12),
+    0 1px 3px rgba(0,0,0,0.08);
+  border: 1px solid rgba(0,0,0,0.06);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.yb-hero-photo-wrap:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.1);
+}
+.yb-hero-photo-wrap--0 { transform: rotate(-2.5deg); }
+.yb-hero-photo-wrap--0:hover { transform: rotate(-1deg) scale(1.02); }
+.yb-hero-photo-wrap--1 { transform: rotate(2deg); margin-top: 16px; }
+.yb-hero-photo-wrap--1:hover { transform: rotate(0.5deg) scale(1.02); }
+
+.yb-hero-photo {
+  display: block;
+  width: 420px;
+  height: auto;
+  user-select: none;
+}
+
+/* Mobile: carousel */
+@media (max-width: 640px) {
+  .yb-hero-photos-row { display: none; }
+  .yb-hero-photos-carousel {
+    display: block;
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto;
+  }
+  .yb-hero-photos-track {
+    display: flex;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .yb-hero-photo-slide {
+    flex: 0 0 100%;
+    display: flex;
+    justify-content: center;
+    padding: 8px 4px 4px;
+  }
+  .yb-hero-photo-wrap--0 { transform: rotate(-1.5deg); }
+  .yb-hero-photo-wrap--0:hover { transform: rotate(-1.5deg); }
+  .yb-hero-photo-wrap--1 { transform: rotate(1.5deg); margin-top: 0; }
+  .yb-hero-photo-wrap--1:hover { transform: rotate(1.5deg); }
+  .yb-hero-photo { width: 100%; height: auto; }
+  .yb-hero-photos-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .yb-hero-photos-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--yb-ink-faint);
+    opacity: 0.35;
+    transition: opacity 0.2s, background 0.2s;
+    cursor: pointer;
+  }
+  .yb-hero-photos-dot.active {
+    background: var(--yb-accent);
+    opacity: 1;
+  }
 }
 
 /* ════════════════════════════════════════
