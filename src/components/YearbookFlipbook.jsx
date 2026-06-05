@@ -5,6 +5,7 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
 import { CLASSES } from "../data/classes";
+import MessageWall from "./MessageWall";
 import {
   buildPalette,
   buildSpreadPalette,
@@ -49,9 +50,9 @@ function useBookScale() {
 }
 
 // ─── FlipPage wrapper ─────────────────────────────────────────────────────────
-const FlipPage = React.forwardRef(function FlipPage({ children }, ref) {
+const FlipPage = React.forwardRef(function FlipPage({ children, width, height }, ref) {
   return (
-    <div ref={ref} style={{ width: PAGE_W, height: PAGE_H, background: "#ffffff", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div ref={ref} style={{ width, height, background: "#ffffff", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {children}
     </div>
   );
@@ -59,11 +60,11 @@ const FlipPage = React.forwardRef(function FlipPage({ children }, ref) {
 
 // ─── Progressive Page (low-res → HD fade, sequential) ────────────────────────
 const LO_W = 100;
-const LO_SCALE = PAGE_W / LO_W;
 
-function ProgressivePage({ pageNumber, isFirst, onFirstRender }) {
+function ProgressivePage({ pageNumber, isFirst, onFirstRender, width, height }) {
   const [loReady, setLoReady] = useState(false);
   const [hdReady, setHdReady] = useState(false);
+  const loScale = width / LO_W;
 
   const handleLoReady = useCallback(() => {
     setLoReady(true);
@@ -71,11 +72,11 @@ function ProgressivePage({ pageNumber, isFirst, onFirstRender }) {
   }, [isFirst, onFirstRender]);
 
   return (
-    <div style={{ width: PAGE_W, height: PAGE_H, position: "relative", overflow: "hidden" }}>
+    <div style={{ width, height, position: "relative", overflow: "hidden" }}>
       {/* lo-res: render dulu, sembunyikan setelah HD siap */}
       <div style={{
         position: "absolute", top: 0, left: 0,
-        transform: `scale(${LO_SCALE})`, transformOrigin: "top left",
+        transform: `scale(${loScale})`, transformOrigin: "top left",
         opacity: hdReady ? 0 : 1, transition: "opacity 0.4s ease",
       }}>
         <Page pageNumber={pageNumber} width={LO_W}
@@ -89,7 +90,7 @@ function ProgressivePage({ pageNumber, isFirst, onFirstRender }) {
           position: "absolute", top: 0, left: 0,
           opacity: hdReady ? 1 : 0, transition: "opacity 0.4s ease",
         }}>
-          <Page pageNumber={pageNumber} width={PAGE_W}
+          <Page pageNumber={pageNumber} width={width}
             renderTextLayer={false} renderAnnotationLayer={false}
             onRenderSuccess={() => setHdReady(true)}
           />
@@ -146,6 +147,52 @@ function BookCoverThumbnail({ cover, hue }) {
   );
 }
 
+// ─── Suara flip (sintesis Web Audio, nol aset) ───────────────────────────────
+// Niru bunyi kertas dibalik: burst noise pendek difilter lowpass + envelope cepat.
+// Ganti ke file mp3 gampang nanti kalau mau lebih realistis.
+function playFlipSound(ctxRef) {
+  try {
+    if (!ctxRef.current) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctxRef.current = new AC();
+    }
+    const ctx = ctxRef.current;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const now = ctx.currentTime;
+    const dur = 0.18;
+
+    // buffer noise putih
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / data.length;
+      // amplop: naik cepat lalu turun — kesan "swoosh" kertas
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+
+    // lowpass yang nyapu turun biar terasa "geser"
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(3200, now);
+    lp.frequency.exponentialRampToValueAtTime(900, now + dur);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    src.connect(lp).connect(gain).connect(ctx.destination);
+    src.start(now);
+    src.stop(now + dur);
+  } catch {
+    /* abaikan — audio opsional */
+  }
+}
+
 // ─── Flipbook Viewer ──────────────────────────────────────────────────────────
 function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
   const viewPdf = classData.pdf.replace(".pdf", "-optimized.pdf");
@@ -160,14 +207,122 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
   const [fadingThemeStyle, setFadingThemeStyle] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFlipping, setIsFlipping] = useState(false);
+  const [muted, setMuted] = useState(() => {
+    try { return localStorage.getItem("yb-flip-muted") === "1"; } catch { return false; }
+  });
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
   const flipBookRef = useRef(null);
   const overlayRef = useRef(null);
   const backgroundTimeoutRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const mutedRef = useRef(muted);
+
+  const toggleMuted = useCallback(() => {
+    setMuted((m) => {
+      const next = !m;
+      mutedRef.current = next;
+      try { localStorage.setItem("yb-flip-muted", next ? "1" : "0"); } catch { /* noop */ }
+      return next;
+    });
+  }, []);
   const scale = useBookScale();
+  // Ukuran piksel asli — flipbook dirender pada ukuran ini (bukan CSS scale),
+  // supaya koordinat sentuh page-flip cocok & swipe/flip jalan di HP.
+  const dispW = Math.max(1, Math.round(PAGE_W * scale));
+  const dispH = Math.max(1, Math.round(PAGE_H * scale));
 
   const flipPrev = useCallback(() => flipBookRef.current?.pageFlip().flipPrev(), []);
   const flipNext = useCallback(() => flipBookRef.current?.pageFlip().flipNext(), []);
   const jumpTo = useCallback((p) => flipBookRef.current?.pageFlip().turnToPage(p), []);
+
+  // Input sendiri (bukan dari react-pageflip) supaya konsisten di HP/tablet/PC.
+  // Library di-nonaktifin mouse/touch-nya; layer transparan di atas buku nangkep
+  // pointer → tap kiri/kanan = mundur/maju, swipe horizontal juga jalan.
+  const flippingRef = useRef(false);
+  const pointerRef = useRef({ x: 0, y: 0 });
+  const onBookPointerDown = useCallback((e) => {
+    pointerRef.current = { x: e.clientX, y: e.clientY };
+  }, []);
+  const onBookPointerUp = useCallback((e) => {
+    if (flippingRef.current) return;
+    const dx = e.clientX - pointerRef.current.x;
+    const dy = e.clientY - pointerRef.current.y;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+      // swipe: geser ke kiri = halaman maju, geser ke kanan = mundur
+      if (dx < 0) flipNext();
+      else flipPrev();
+    } else if (Math.abs(dx) < 14 && Math.abs(dy) < 14) {
+      // tap: sisi kiri = mundur, sisi kanan = maju
+      const x = e.clientX - rect.left;
+      if (x < rect.width / 2) flipPrev();
+      else flipNext();
+    }
+  }, [flipPrev, flipNext]);
+
+  // ── Zoom overlay: pinch (HP) / wheel (PC) buat scale, drag buat pan ──────────
+  const ZOOM_MIN = 1, ZOOM_MAX = 4;
+  const openZoom = useCallback(() => {
+    setZoomScale(1);
+    setZoomOffset({ x: 0, y: 0 });
+    setZoomOpen(true);
+  }, []);
+  const closeZoom = useCallback(() => setZoomOpen(false), []);
+  const resetZoom = useCallback(() => {
+    setZoomScale(1);
+    setZoomOffset({ x: 0, y: 0 });
+  }, []);
+
+  // pointer aktif buat deteksi pinch & drag
+  const zoomPointers = useRef(new Map());
+  const pinchRef = useRef({ dist: 0, scale: 1 });
+  const panRef = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
+  const lastTapRef = useRef(0);
+
+  const onZoomPointerDown = useCallback((e) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    zoomPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (zoomPointers.current.size === 2) {
+      const [a, b] = [...zoomPointers.current.values()];
+      pinchRef.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), scale: zoomScale };
+    } else {
+      panRef.current = { x: e.clientX, y: e.clientY, ox: zoomOffset.x, oy: zoomOffset.y };
+      // double-tap reset
+      const now = Date.now();
+      if (now - lastTapRef.current < 300) resetZoom();
+      lastTapRef.current = now;
+    }
+  }, [zoomScale, zoomOffset, resetZoom]);
+
+  const onZoomPointerMove = useCallback((e) => {
+    if (!zoomPointers.current.has(e.pointerId)) return;
+    zoomPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (zoomPointers.current.size >= 2) {
+      const [a, b] = [...zoomPointers.current.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchRef.current.dist > 0) {
+        const next = pinchRef.current.scale * (dist / pinchRef.current.dist);
+        setZoomScale(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next)));
+      }
+    } else if (zoomScale > 1) {
+      setZoomOffset({
+        x: panRef.current.ox + (e.clientX - panRef.current.x),
+        y: panRef.current.oy + (e.clientY - panRef.current.y),
+      });
+    }
+  }, [zoomScale]);
+
+  const onZoomPointerUp = useCallback((e) => {
+    zoomPointers.current.delete(e.pointerId);
+    if (zoomPointers.current.size < 2) pinchRef.current.dist = 0;
+  }, []);
+
+  const onZoomWheel = useCallback((e) => {
+    e.preventDefault();
+    setZoomScale((s) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, s - e.deltaY * 0.0015)));
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     const el = overlayRef.current;
@@ -227,13 +382,22 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
 
   useEffect(() => {
     const fn = (e) => {
-      if (e.key === "Escape" && !document.fullscreenElement) onClose();
-      else if (e.key === "ArrowLeft") flipPrev();
+      if (e.key === "Escape") {
+        if (zoomOpen) closeZoom();
+        else if (!document.fullscreenElement) onClose();
+      } else if (zoomOpen) {
+        return; // navigasi halaman dimatiin saat zoom kebuka
+      } else if (e.key === "ArrowLeft") flipPrev();
       else if (e.key === "ArrowRight") flipNext();
     };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
-  }, [onClose, flipPrev, flipNext]);
+  }, [onClose, flipPrev, flipNext, zoomOpen, closeZoom]);
+
+  // offset balik ke tengah pas zoom balik ke 1×
+  useEffect(() => {
+    if (zoomScale <= 1) setZoomOffset({ x: 0, y: 0 });
+  }, [zoomScale]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -314,6 +478,27 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
             </span>
           )}
           <span className="yb-action-divider" aria-hidden="true" />
+          {numPages && (
+            <button onClick={openZoom} className="yb-action-btn" aria-label="Perbesar halaman">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
+                <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+              </svg>
+              <span className="yb-action-tooltip">Perbesar</span>
+            </button>
+          )}
+          <button onClick={toggleMuted} className="yb-action-btn" aria-label={muted ? "Nyalakan suara" : "Matikan suara"}>
+            {muted ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+              </svg>
+            )}
+            <span className="yb-action-tooltip">{muted ? "Suara mati" : "Suara nyala"}</span>
+          </button>
           <button onClick={toggleFullscreen} className="yb-action-btn" aria-label="Layar Penuh">
             {isFullscreen ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -346,12 +531,33 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
       <div className="yb-book-area">
         {loading && !error && (
           <div className="yb-loading-state">
-            <div className="yb-spinner" />
-            <p className="yb-loading-label">
-              ini milik kita, untuk selamanya
-            </p>
-            <div className="yb-loading-bar" aria-hidden="true">
-              <span style={{ width: `${Math.max(loadProgress, documentReady ? 100 : 6)}%` }} />
+            <div className="yb-load-book" aria-hidden="true">
+              {classData.cover && (
+                <img className="yb-load-book-cover" src={classData.cover} alt="" loading="eager" />
+              )}
+              <div className="yb-load-book-shade" />
+              <div className="yb-load-book-spine" />
+              <div className="yb-load-book-foil" />
+              <div className="yb-load-book-seal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="yb-load-meta">
+              <span className="yb-load-eyebrow">Membuka Kenangan</span>
+              <p className="yb-load-quote">ini milik kita, untuk selamanya</p>
+            </div>
+
+            <div className="yb-load-progress">
+              <div className="yb-loading-bar" aria-hidden="true">
+                <span style={{ width: `${Math.max(loadProgress, documentReady ? 100 : 6)}%` }} />
+              </div>
+              <span className="yb-load-pct">
+                {String(Math.round(Math.max(loadProgress, documentReady ? 100 : 6))).padStart(2, "0")}
+                <em>%</em>
+              </span>
             </div>
           </div>
         )}
@@ -370,35 +576,53 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
           loading={null}
         >
           {documentReady && !error && numPages && (
-            <div className={`yb-book-shell${isFlipping ? " is-flipping" : ""}`} style={{ transform: `scale(${scale})` }}>
+            <div className={`yb-book-shell${isFlipping ? " is-flipping" : ""}`}>
               <HTMLFlipBook
+                key={dispW}
                 ref={flipBookRef}
-                width={PAGE_W} height={PAGE_H}
+                width={dispW} height={dispH}
                 size="fixed"
-                minWidth={PAGE_W} maxWidth={PAGE_W}
-                minHeight={PAGE_H} maxHeight={PAGE_H}
+                minWidth={dispW} maxWidth={dispW}
+                minHeight={dispH} maxHeight={dispH}
+                startPage={currentPage}
                 showCover={true} flippingTime={780}
                 drawShadow={true} maxShadowOpacity={0.55}
-                showPageCorners={true} disableFlipByClick={false}
-                usePortrait={false} mobileScrollSupport={true}
+                showPageCorners={false} disableFlipByClick={true}
+                useMouseEvents={false}
+                usePortrait={false} mobileScrollSupport={false}
                 onFlip={(e) => setCurrentPage(e.data)}
-                onChangeState={(e) => setIsFlipping(e.data === "flipping" || e.data === "user_fold")}
+                onChangeState={(e) => {
+                  const flipping = e.data === "flipping" || e.data === "user_fold";
+                  // bunyi cuma pas MASUK ke state flipping (bukan tiap perubahan)
+                  if (e.data === "flipping" && !flippingRef.current && !mutedRef.current) {
+                    playFlipSound(audioCtxRef);
+                  }
+                  flippingRef.current = flipping;
+                  setIsFlipping(flipping);
+                }}
                 className="yb-flipbook"
               >
                 {Array.from({ length: numPages }, (_, i) => (
-                  <FlipPage key={i}>
+                  <FlipPage key={i} width={dispW} height={dispH}>
                     {Math.abs(i - currentPage) <= RENDER_WINDOW ? (
                       <ProgressivePage
                         pageNumber={i + 1}
                         isFirst={i === 0}
                         onFirstRender={handleFirstPageRenderSuccess}
+                        width={dispW}
+                        height={dispH}
                       />
                     ) : (
-                      <div style={{ width: PAGE_W, height: PAGE_H }} />
+                      <div style={{ width: dispW, height: dispH }} />
                     )}
                   </FlipPage>
                 ))}
               </HTMLFlipBook>
+              <div
+                className="yb-tap-layer"
+                onPointerDown={onBookPointerDown}
+                onPointerUp={onBookPointerUp}
+              />
             </div>
           )}
         </Document>
@@ -416,20 +640,61 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
           </button>
 
           <div className="yb-pagination">
-            <button className="yb-page-jump" onClick={() => jumpTo(0)} disabled={currentSpread <= 0} aria-label="Ke awal">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 18l-6-6 6-6M18 18l-6-6 6-6"/></svg>
+            <button className="yb-page-jump" onClick={flipPrev} disabled={currentSpread <= 0} aria-label="Halaman sebelumnya">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
             <span className="yb-page-num">{String(currentSpread + 1).padStart(2, '0')}</span>
             <div className="yb-page-track">
               <div className="yb-page-progress" style={{ width: `${progressPct}%` }} />
             </div>
             <span className="yb-page-num yb-page-num--total">{String(totalSpreads).padStart(2, '0')}</span>
-            <button className="yb-page-jump" onClick={() => jumpTo((totalSpreads - 1) * 2)} disabled={currentSpread >= totalSpreads - 1} aria-label="Ke akhir">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 6l6 6-6 6M6 6l6 6-6 6"/></svg>
+            <button className="yb-page-jump" onClick={flipNext} disabled={currentSpread >= totalSpreads - 1} aria-label="Halaman berikutnya">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
             </button>
           </div>
         </>
       )}
+
+      {/* Zoom overlay — spread aktif, bisa pinch/wheel + pan */}
+      {zoomOpen && numPages && (() => {
+        const { left, right } = getSpreadPageNumbers(currentPage, numPages);
+        return (
+          <div
+            className="yb-zoom-overlay"
+            onPointerDown={onZoomPointerDown}
+            onPointerMove={onZoomPointerMove}
+            onPointerUp={onZoomPointerUp}
+            onPointerCancel={onZoomPointerUp}
+            onWheel={onZoomWheel}
+          >
+            <div className="yb-zoom-bar">
+              <span className="yb-zoom-hint">Cubit / scroll buat zoom · seret buat geser · ketuk 2× reset</span>
+              <span className="yb-zoom-level">{Math.round(zoomScale * 100)}%</span>
+              <button onClick={closeZoom} className="yb-action-btn yb-close-btn" aria-label="Tutup zoom">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div
+              className="yb-zoom-stage"
+              style={{
+                transform: `translate(${zoomOffset.x}px, ${zoomOffset.y}px) scale(${zoomScale})`,
+                cursor: zoomScale > 1 ? "grab" : "default",
+              }}
+            >
+              <Document file={viewPdf} loading={null}>
+                <Page pageNumber={left} width={dispW}
+                  renderTextLayer={false} renderAnnotationLayer={false} />
+                {right && (
+                  <Page pageNumber={right} width={dispW}
+                    renderTextLayer={false} renderAnnotationLayer={false} />
+                )}
+              </Document>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -687,6 +952,9 @@ export default function YearbookApp() {
               </span>
             </span>
             <div className="yb-nav-actions">
+              <a href="#kenangan" className="yb-nav-btn">
+                Kotak Kenangan
+              </a>
               <button onClick={navigateToAdmin} className="yb-nav-btn yb-nav-btn--admin">
                 Admin
               </button>
@@ -723,10 +991,16 @@ export default function YearbookApp() {
 
             <HeroPhotos />
 
-            <a href="#kelas" className="yb-hero-scroll" aria-label="Gulir ke daftar kelas">
-              <span>Lihat Kelas</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
-            </a>
+            <div className="yb-hero-scrolls">
+              <a href="#kelas" className="yb-hero-scroll" aria-label="Gulir ke daftar kelas">
+                <span>Lihat Kelas</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+              </a>
+              <a href="#kenangan" className="yb-hero-scroll" aria-label="Gulir ke kotak kenangan">
+                <span>Lihat Kotak Kenangan</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+              </a>
+            </div>
           </div>
         </header>
 
@@ -785,6 +1059,8 @@ export default function YearbookApp() {
             ))}
           </div>
         </main>
+
+        <MessageWall />
 
         <footer className="yb-footer">
           <div className="yb-footer-divider" aria-hidden="true">
@@ -910,7 +1186,7 @@ const STYLES = `
 
 .yb-particles {
   position: absolute; inset: 0;
-  pointer-events: none; z-index: 0; overflow: hidden;
+  pointer-events: none; z-index: -1; overflow: hidden;
 }
 
 .yb-particle {
@@ -1183,6 +1459,10 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   animation: heroRise 1s cubic-bezier(0.16,1,0.3,1) 0.54s backwards;
 }
 
+.yb-hero-scrolls {
+  display: flex; justify-content: center; align-items: flex-start;
+  gap: 40px; flex-wrap: wrap;
+}
 .yb-hero-scroll {
   display: inline-flex; flex-direction: column; align-items: center; gap: 8px;
   font-family: var(--yb-page-font);
@@ -1535,6 +1815,157 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 
 /* ════════════════════════════════════════
+   KOTAK KENANGAN — papan scrapbook + sticky notes
+   ════════════════════════════════════════ */
+.yb-kenangan {
+  position: relative; z-index: 1;
+  max-width: 1040px; margin: 0 auto; padding: 80px 24px 40px;
+  font-family: var(--yb-page-font);
+}
+.yb-kenangan-head { text-align: center; margin-bottom: 44px; }
+.yb-kenangan-kicker {
+  display: inline-block;
+  font-family: var(--yb-hand-font);
+  font-size: 26px; color: var(--yb-accent);
+  transform: rotate(-2.5deg);
+}
+.yb-kenangan-title {
+  font-family: var(--yb-title-font);
+  font-size: clamp(34px, 7vw, 56px);
+  color: var(--yb-ink); margin: 2px 0 10px; line-height: 1.05;
+}
+.yb-kenangan-sub {
+  color: var(--yb-ink-mid); font-size: 15px; margin: 0 auto; max-width: 440px;
+}
+
+/* ── Notepad bergaris (form tulis) ── */
+.yb-notepad {
+  position: relative;
+  max-width: 460px; margin: 0 auto 64px;
+  transform: rotate(-1deg);
+  filter: drop-shadow(0 14px 26px rgba(60, 42, 24, 0.18));
+  transition: transform 0.3s ease;
+}
+.yb-notepad:focus-within { transform: rotate(0deg); }
+.yb-notepad-rings {
+  position: absolute; top: -9px; left: 26px; right: 26px;
+  display: flex; justify-content: space-between; z-index: 3;
+}
+.yb-notepad-rings span {
+  width: 13px; height: 18px; border-radius: 7px;
+  background: linear-gradient(180deg, #c9b48f, #8a7350);
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.25), 0 1px 2px rgba(0,0,0,0.3);
+}
+.yb-notepad-sheet {
+  position: relative; padding: 26px 22px 18px 56px;
+  background:
+    /* garis tepi merah margin */
+    linear-gradient(90deg, transparent 42px, rgba(196, 92, 74, 0.5) 42px, rgba(196, 92, 74, 0.5) 44px, transparent 44px),
+    /* baris-baris */
+    repeating-linear-gradient(180deg, transparent 0 35px, rgba(120, 150, 175, 0.28) 35px 36px),
+    #fffdf6;
+  border-radius: 3px 3px 5px 5px;
+  border: 1px solid rgba(170, 150, 120, 0.4);
+}
+.yb-notepad-text {
+  display: block; width: 100%; box-sizing: border-box;
+  border: none; outline: none; resize: none; background: transparent;
+  font-family: var(--yb-hand-font); font-size: 24px; line-height: 36px;
+  color: #2a3a4a; padding: 0; min-height: 108px;
+}
+.yb-notepad-text::placeholder { color: rgba(90, 110, 130, 0.5); }
+.yb-notepad-sign {
+  display: flex; align-items: baseline; gap: 6px;
+  margin-top: 6px; line-height: 36px;
+}
+.yb-notepad-dash { font-family: var(--yb-hand-font); font-size: 22px; color: var(--yb-accent); }
+.yb-notepad-name {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-family: var(--yb-hand-font); font-size: 22px; color: var(--yb-accent);
+}
+.yb-notepad-name::placeholder { color: rgba(184, 94, 69, 0.45); }
+.yb-notepad-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px; padding-left: 0;
+}
+.yb-notepad-count { font-family: var(--yb-page-font); font-size: 11px; color: var(--yb-ink-faint); }
+.yb-notepad-btn {
+  font-family: var(--yb-page-font); font-size: 14px; font-weight: 700;
+  letter-spacing: 0.02em; color: #fff;
+  background: var(--yb-accent);
+  border: none; border-radius: 3px; padding: 9px 20px; cursor: pointer;
+  box-shadow: 0 3px 0 rgba(120, 56, 40, 0.7);
+  transition: transform 0.1s, box-shadow 0.1s, opacity 0.2s;
+}
+.yb-notepad-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 rgba(120,56,40,0.7); }
+.yb-notepad-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 rgba(120,56,40,0.7); }
+.yb-notepad-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.yb-notepad-error {
+  margin: 8px 0 0; color: #b02e1c; font-family: var(--yb-page-font); font-size: 13px;
+}
+
+/* ── Papan tempel (masonry sticky notes) ── */
+.yb-board { columns: 3; column-gap: 22px; }
+.yb-board-empty {
+  column-span: all; text-align: center;
+  font-family: var(--yb-hand-font); font-size: 22px;
+  color: var(--yb-ink-faint); padding: 28px 0;
+}
+.yb-note {
+  position: relative; break-inside: avoid;
+  margin: 14px 4px 30px; padding: 24px 20px 16px;
+  transform: rotate(var(--rot, 0deg));
+  box-shadow: 2px 5px 14px rgba(60, 42, 24, 0.18);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.yb-note:hover {
+  transform: rotate(0deg) scale(1.035);
+  box-shadow: 4px 10px 24px rgba(60, 42, 24, 0.28);
+  z-index: 4;
+}
+/* selotip washi */
+.yb-note-tape {
+  position: absolute; top: -11px; left: 50%;
+  width: 84px; height: 26px; margin-left: -42px;
+  transform: rotate(var(--tape-rot, 0deg));
+  background: rgba(255, 255, 255, 0.45);
+  border-left: 1px dashed rgba(255,255,255,0.55);
+  border-right: 1px dashed rgba(255,255,255,0.55);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  backdrop-filter: blur(1px);
+}
+.yb-note-body {
+  margin: 0 0 16px; color: #33291d;
+  font-family: var(--yb-hand-font); font-size: 21px; line-height: 1.45;
+  white-space: pre-wrap; word-break: break-word;
+}
+.yb-note-meta {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  border-top: 1px dashed rgba(80, 60, 40, 0.28); padding-top: 8px;
+}
+.yb-note-from {
+  font-family: var(--yb-hand-font); font-size: 20px; font-weight: 700;
+  color: var(--yb-accent);
+}
+.yb-note-time {
+  font-family: var(--yb-page-font); font-size: 10px; letter-spacing: 0.04em;
+  color: rgba(80, 60, 40, 0.5); text-transform: uppercase; white-space: nowrap;
+}
+/* varian warna kertas */
+.yb-note--t0 { background: #fef3c0; }
+.yb-note--t1 { background: #fcded0; }
+.yb-note--t2 { background: #d7eed9; }
+.yb-note--t3 { background: #fbd6e2; }
+.yb-note--t4 { background: #d6e6f4; }
+.yb-note--t5 { background: #ece2f7; }
+
+@media (max-width: 880px) { .yb-board { columns: 2; } }
+@media (max-width: 540px) {
+  .yb-board { columns: 1; }
+  .yb-notepad { max-width: 100%; }
+}
+
+/* ════════════════════════════════════════
    FOOTER
    ════════════════════════════════════════ */
 .yb-footer {
@@ -1741,6 +2172,22 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   transform-origin: center center;
   will-change: transform;
   filter: drop-shadow(0 18px 36px rgba(0,0,0,0.45));
+  cursor: pointer;
+}
+/* swipe/flip di HP: cegah browser ambil gesture horizontal jadi scroll */
+.yb-flipbook,
+.yb-flipbook * {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* layer transparan penangkap tap/swipe — di atas buku, di semua device */
+.yb-tap-layer {
+  position: absolute; inset: 0; z-index: 20;
+  touch-action: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 /* contact shadow — elips lembut di bawah buku, bikin kesan "nempel permukaan" */
 .yb-book-shell::before {
@@ -1773,33 +2220,181 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 /* ── Loading ─────────────────────────────── */
 .yb-loading-state {
   display: flex; flex-direction: column; align-items: center;
-  gap: 20px; position: absolute; inset: 0; justify-content: center; z-index: 20;
-  backdrop-filter: blur(8px);
+  gap: 30px; position: absolute; inset: 0; justify-content: center; z-index: 20;
+  backdrop-filter: blur(10px);
+  animation: ybLoadIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes ybLoadIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-.yb-spinner {
-  width: 48px; height: 48px;
-  border: 2px solid rgba(255,255,255,0.05);
-  border-top-color: var(--yb-overlay-accent);
-  border-radius: 50%;
-  animation: spin 0.8s cubic-bezier(0.6, 0.2, 0.4, 0.8) infinite;
+/* ── Sampul buku tertutup ─────────────────── */
+.yb-load-book {
+  position: relative;
+  width: 132px; height: 176px;
+  border-radius: 4px 9px 9px 4px;
+  background: var(--yb-overlay-bg-start, #15140f);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.12) inset,
+    -22px 30px 60px rgba(0,0,0,0.6),
+    0 14px 30px rgba(0,0,0,0.45);
+  overflow: hidden;
+  animation: ybBookBreathe 3.4s ease-in-out infinite;
+  will-change: transform;
 }
-
-.yb-loading-label {
+/* cover asli kelas */
+.yb-load-book-cover {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center;
+  border-radius: inherit;
+}
+/* gelapin tepi biar segel & foil kebaca di atas cover */
+.yb-load-book-shade {
+  position: absolute; inset: 0; border-radius: inherit;
+  background:
+    radial-gradient(120% 90% at 50% 38%, transparent 30%, rgba(0,0,0,0.55) 100%),
+    linear-gradient(to top, rgba(0,0,0,0.6), transparent 45%);
+}
+@keyframes ybBookBreathe {
+  0%, 100% { transform: translateY(0) rotate(-1.2deg); }
+  50%      { transform: translateY(-7px) rotate(-1.2deg); }
+}
+/* punggung buku */
+.yb-load-book-spine {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 11px;
+  background: linear-gradient(to right,
+    rgba(0,0,0,0.55), rgba(0,0,0,0.15) 60%, transparent);
+  border-right: 1px solid rgba(255,255,255,0.05);
+}
+/* foil/cahaya yang menyapu sampul */
+.yb-load-book-foil {
+  position: absolute; inset: -40% -120%;
+  background: linear-gradient(105deg,
+    transparent 38%,
+    var(--yb-overlay-accent) 49%,
+    rgba(255,255,255,0.85) 50%,
+    var(--yb-overlay-accent) 51%,
+    transparent 62%);
+  opacity: 0.5; mix-blend-mode: screen;
+  transform: translateX(-60%);
+  animation: ybFoilSweep 2.8s cubic-bezier(0.6, 0.05, 0.3, 1) infinite;
+}
+@keyframes ybFoilSweep {
+  0%   { transform: translateX(-65%); }
+  55%  { transform: translateX(65%); }
+  100% { transform: translateX(65%); }
+}
+/* segel bintang di tengah sampul */
+.yb-load-book-seal {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px; height: 48px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: var(--yb-overlay-accent);
+  background: rgba(10,9,6,0.35);
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255,240,1,0.4);
+  box-shadow: 0 0 22px rgba(255,240,1,0.22), 0 0 0 6px rgba(255,240,1,0.05);
+}
+.yb-load-book-seal svg {
+  width: 24px; height: 24px;
+  animation: ybSealSpin 6s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(255,240,1,0.5));
+}
+@keyframes ybSealSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+/* ── Teks ─────────────────────────────────── */
+.yb-load-meta {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  text-align: center;
+}
+.yb-load-eyebrow {
   font-family: 'Archivo', sans-serif;
-  font-size: 12px; font-weight: 700; letter-spacing: 0.3em;
-  text-transform: uppercase; color: rgba(255,255,255,0.6);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.42em;
+  text-transform: uppercase; color: var(--yb-overlay-accent);
+  opacity: 0.85;
+  animation: ybEyebrowPulse 2.4s ease-in-out infinite;
+}
+@keyframes ybEyebrowPulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.95; }
+}
+.yb-load-quote {
+  font-family: 'DM Serif Display', serif; font-style: italic;
+  font-size: 21px; line-height: 1.2; color: rgba(255,255,255,0.82);
+  max-width: 280px;
 }
 
+/* ── Progress ─────────────────────────────── */
+.yb-load-progress {
+  display: flex; align-items: center; gap: 16px;
+}
 .yb-loading-bar {
-  width: 240px; height: 2px;
-  background: rgba(255,255,255,0.1); overflow: hidden;
+  width: 200px; height: 2px;
+  background: rgba(255,255,255,0.12); border-radius: 2px;
+  overflow: hidden; position: relative;
 }
 .yb-loading-bar span {
-  display: block; height: 100%;
-  background: var(--yb-overlay-accent);
-  box-shadow: 0 0 10px var(--yb-overlay-accent);
-  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: block; height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255,240,1,0.4), var(--yb-overlay-accent));
+  box-shadow: 0 0 12px var(--yb-overlay-accent);
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.yb-load-pct {
+  font-family: 'Archivo', sans-serif;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.7);
+  font-variant-numeric: tabular-nums; min-width: 38px;
+}
+.yb-load-pct em {
+  font-style: normal; font-size: 9px; color: var(--yb-overlay-accent);
+  margin-left: 1px; vertical-align: super;
+}
+
+/* ── Zoom overlay ─────────────────────────── */
+.yb-zoom-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(4,4,4,0.94);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+  animation: ybLoadIn 0.25s ease both;
+}
+.yb-zoom-bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  display: flex; align-items: center; gap: 16px;
+  padding: 18px 22px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+  pointer-events: none;
+}
+.yb-zoom-bar > * { pointer-events: auto; }
+.yb-zoom-hint {
+  flex: 1; min-width: 0;
+  font-family: 'Archivo', sans-serif; font-size: 11px; letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.5);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.yb-zoom-level {
+  font-family: 'Archivo', sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.08em; color: var(--yb-overlay-accent);
+  font-variant-numeric: tabular-nums; min-width: 44px; text-align: right;
+}
+.yb-zoom-stage {
+  display: flex; align-items: center;
+  transform-origin: center center;
+  will-change: transform;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+}
+.yb-zoom-stage .react-pdf__Page,
+.yb-zoom-stage canvas { display: block; }
+@media (max-width: 600px) {
+  .yb-zoom-hint { font-size: 10px; }
+  .yb-zoom-bar { padding: 14px 16px; gap: 10px; }
 }
 
 /* ── Error ───────────────────────────────── */
