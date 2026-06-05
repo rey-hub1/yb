@@ -14,7 +14,6 @@ import {
   getCardStyle,
   getViewerThemeStyle
 } from "../utils/colorExtractor";
-import AdminPanel from "./AdminPanel";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
@@ -746,12 +745,9 @@ export default function YearbookApp() {
     });
     return initial;
   });
-  const [entered, setEntered]   = useState(() => window.location.hash === "#admin");
+  const [entered, setEntered]   = useState(false);
   const [showVideoBanner, setShowVideoBanner] = useState(() => {
     return localStorage.getItem('yb-video-dismissed-v2') !== '1';
-  });
-  const [view, setView] = useState(() => {
-    return window.location.hash === "#admin" ? "admin" : "user";
   });
   const [lowEnd] = useState(isLowEndDevice);
 
@@ -759,27 +755,6 @@ export default function YearbookApp() {
     document.documentElement.style.scrollBehavior = lowEnd ? 'auto' : 'smooth';
     return () => { document.documentElement.style.scrollBehavior = ''; };
   }, [lowEnd]);
-
-  useEffect(() => {
-    const handleHashChange = () => {
-      setView(window.location.hash === "#admin" ? "admin" : "user");
-    };
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
-
-  const navigateToAdmin = () => {
-    window.location.hash = "admin";
-    window.location.reload();
-  };
-
-  const navigateToUser = () => {
-    window.location.hash = "";
-  };
-
-  if (view === "admin") {
-    return <AdminPanel onBack={navigateToUser} />;
-  }
 
   if (!entered) {
     return (
@@ -831,14 +806,7 @@ export default function YearbookApp() {
                 <em>SMKN 2 Purwakarta · 2026</em>
               </span>
             </span>
-            <div className="yb-nav-actions">
-              <a href="#kenangan" className="yb-nav-btn">
-                Sticky Memory
-              </a>
-              <button onClick={navigateToAdmin} className="yb-nav-btn yb-nav-btn--admin">
-                Admin
-              </button>
-            </div>
+            
           </div>
         </nav>
 
@@ -955,9 +923,6 @@ export default function YearbookApp() {
             <span className="yb-footer-dot" />
             <span>2026</span>
           </p>
-          <button onClick={navigateToAdmin} className="yb-footer-admin">
-            Kelola Palet Warna (Admin)
-          </button>
           <p className="yb-footer-copy">&copy; 2026 &middot; Kenangan tak pernah pudar</p>
         </footer>
       </div>
@@ -1135,12 +1100,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   transform: translateY(-1px);
 }
 
-.yb-nav-btn--admin {
-  background: var(--yb-accent-gold);
-  color: #fff; border-color: transparent;
-  box-shadow: 0 2px 10px rgba(135,92,28,0.28);
-}
-.yb-nav-btn--admin:hover { color: #fff; filter: brightness(1.08); }
 
 .yb-navbar-brand {
   display: flex; align-items: center; gap: 12px;
@@ -2043,15 +2002,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   width: 3px; height: 3px; border-radius: 50%;
   background: var(--yb-accent); opacity: 0.5;
 }
-.yb-footer-admin {
-  font-family: var(--yb-page-font);
-  font-size: 11px; letter-spacing: 0.05em;
-  color: var(--yb-ink-faint);
-  text-decoration: underline; text-underline-offset: 3px;
-  opacity: 0.7; margin-top: 8px;
-  transition: color 0.2s ease, opacity 0.2s ease;
-}
-.yb-footer-admin:hover { color: var(--yb-accent); opacity: 1; }
 .yb-footer-copy {
   font-family: var(--yb-page-font);
   font-size: 11px; font-style: italic;
