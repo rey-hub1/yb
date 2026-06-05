@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// CSP & security headers diatur lewat HTTP header di vercel.json (lebih kuat
+// dari <meta>, mendukung frame-ancestors penuh + HSTS).
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {

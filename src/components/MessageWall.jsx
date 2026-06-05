@@ -334,19 +334,24 @@ export default function MessageWall() {
                                 </p>
                             )}
                             <div className="yb-board">
-                                {shown.map((m) => {
+                                {[...shown]
+                                    .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
+                                    .map((m) => {
                                     const v = noteVariant(m.id);
                                     const t =
                                         m.color != null ? m.color : v.tone;
                                     return (
                                         <article
                                             key={m.id}
-                                            className={`yb-note yb-note--t${t}`}
+                                            className={`yb-note yb-note--t${t}${m.is_pinned ? " yb-note--pinned" : ""}`}
                                             style={{
                                                 "--rot": `${v.rot}deg`,
                                                 "--tape-rot": `${v.tapeRot}deg`,
                                             }}
                                         >
+                                            {m.is_pinned && (
+                                                <span className="yb-note-pin" aria-label="Ditempel">📌</span>
+                                            )}
                                             <span
                                                 className="yb-note-tape"
                                                 aria-hidden="true"

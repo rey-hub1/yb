@@ -923,13 +923,15 @@ export default function YearbookApp() {
             <div className="yb-video-banner">
               <button className="yb-video-banner-close" onClick={() => { setShowVideoBanner(false); localStorage.setItem('yb-video-dismissed-v2', '1'); }}>✕</button>
               <div className="yb-video-wrapper">
-                <iframe 
-                  src="https://www.youtube.com/embed/uOMjhAj8aBI?autoplay=1&mute=1&start=31" 
-                  title="YouTube video player" 
-                  frameBorder="0" 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                <iframe
+                  src="https://www.youtube-nocookie.com/embed/uOMjhAj8aBI?autoplay=1&mute=1&start=31"
+                  title="YouTube video player"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
                 ></iframe>
               </div>
             </div>
@@ -2055,6 +2057,21 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 .yb-note--t3 { background: #fbd6e2; }
 .yb-note--t4 { background: #d6e6f4; }
 .yb-note--t5 { background: #ece2f7; }
+
+.yb-note--pinned {
+  box-shadow:
+    0 0 0 2px var(--yb-accent),
+    0 6px 20px rgba(184,94,69,0.18);
+  z-index: 1;
+}
+.yb-note-pin {
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  font-size: 18px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+  pointer-events: none;
+}
 
 @media (max-width: 540px) {
   .yb-notepad { max-width: 100%; }

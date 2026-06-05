@@ -10,7 +10,7 @@ const CORS = {
 async function hashIp(ip: string): Promise<string> {
   const buf = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(ip + Deno.env.get("IP_SALT") ?? "yb-salt"),
+    new TextEncoder().encode(ip + (Deno.env.get("IP_SALT") ?? "yb-salt")),
   );
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -48,7 +48,10 @@ Deno.serve(async (req) => {
     });
   }
 
-  const text = (payload.body ?? "").trim();
+  const raw = (payload.body ?? "").trim();
+  const isPinned = raw.startsWith("/pin ");
+  const text = isPinned ? raw.slice(5).trim() : raw;
+
   if (!text) {
     return new Response(JSON.stringify({ error: "Pesan kosong." }), {
       status: 400,
@@ -92,6 +95,7 @@ Deno.serve(async (req) => {
       body: text,
       color: payload.color ?? 0,
       ip_hash: ipHash,
+      is_pinned: isPinned,
     })
     .select()
     .single();
