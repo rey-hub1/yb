@@ -1884,6 +1884,26 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   font-family: var(--yb-hand-font); font-size: 22px; color: var(--yb-accent);
 }
 .yb-notepad-name::placeholder { color: rgba(184, 94, 69, 0.45); }
+.yb-notepad-colors {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 14px;
+}
+.yb-notepad-colors-label {
+  font-family: var(--yb-hand-font); font-size: 18px; color: var(--yb-accent);
+  margin-right: 2px;
+}
+.yb-swatch {
+  width: 24px; height: 24px; padding: 0; cursor: pointer;
+  border: 1px solid rgba(80, 60, 40, 0.25); border-radius: 50%;
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.yb-swatch:hover { transform: scale(1.15) rotate(-6deg); }
+.yb-swatch.is-active {
+  transform: scale(1.2);
+  border-color: var(--yb-ink);
+  box-shadow: 0 0 0 2px var(--yb-bg-lt), 0 0 0 4px var(--yb-ink);
+}
 .yb-notepad-foot {
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 12px; padding-left: 0;
@@ -1905,6 +1925,78 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 
 /* ── Papan tempel (masonry sticky notes) ── */
+.yb-refresh-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-top: 16px; padding: 7px 16px;
+  font-family: var(--yb-page-font); font-size: 11px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--yb-accent);
+  background: transparent;
+  border: 1px solid rgba(184, 94, 69, 0.4);
+  border-radius: 999px; cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.yb-refresh-btn svg { width: 14px; height: 14px; }
+.yb-refresh-btn:hover:not(:disabled) {
+  background: rgba(184, 94, 69, 0.08);
+  border-color: var(--yb-accent);
+  transform: translateY(-1px);
+}
+.yb-refresh-btn:disabled { opacity: 0.6; cursor: progress; }
+.yb-refresh-btn.is-spinning svg { animation: ybSpin 0.8s linear infinite; }
+@keyframes ybSpin { to { transform: rotate(360deg); } }
+
+/* ── Peringatan penyalahgunaan ── */
+.yb-kenangan-warn {
+  display: flex; align-items: flex-start; gap: 10px;
+  max-width: 460px; margin: -44px auto 48px;
+  padding: 12px 16px;
+  background: rgba(214, 168, 90, 0.14);
+  border: 1px solid rgba(196, 140, 60, 0.4);
+  border-left: 4px solid #c4923c;
+  border-radius: 4px;
+}
+.yb-kenangan-warn-ic { font-size: 17px; line-height: 1.5; flex-shrink: 0; }
+.yb-kenangan-warn p {
+  margin: 0; font-family: var(--yb-page-font);
+  font-size: 12.5px; line-height: 1.5; color: var(--yb-ink-mid);
+}
+.yb-kenangan-warn b { color: var(--yb-ink); }
+
+/* ── Cari note ── */
+.yb-board-search {
+  position: relative; display: flex; align-items: center;
+  max-width: 440px; margin: 0 auto 10px;
+}
+.yb-board-search-ic {
+  position: absolute; left: 14px; width: 17px; height: 17px;
+  color: var(--yb-ink-faint); pointer-events: none;
+}
+.yb-board-search-input {
+  width: 100%; box-sizing: border-box;
+  font-family: var(--yb-page-font); font-size: 14px; color: var(--yb-ink);
+  background: var(--yb-bg-lt); border: 1px solid var(--yb-border);
+  border-radius: 999px; padding: 11px 38px 11px 40px; outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.yb-board-search-input::placeholder { color: var(--yb-ink-faint); }
+.yb-board-search-input:focus {
+  border-color: var(--yb-accent);
+  box-shadow: 0 0 0 3px rgba(184, 94, 69, 0.12);
+}
+.yb-board-search-clear {
+  position: absolute; right: 8px;
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border: none; border-radius: 50%;
+  background: rgba(80,60,40,0.1); color: var(--yb-ink-mid);
+  font-size: 12px; cursor: pointer; transition: background 0.2s;
+}
+.yb-board-search-clear:hover { background: rgba(80,60,40,0.2); }
+.yb-board-result {
+  text-align: center; margin: 0 0 26px;
+  font-family: var(--yb-hand-font); font-size: 20px; color: var(--yb-accent);
+}
+
 .yb-board {
   display: flex; flex-wrap: wrap;
   align-items: flex-start; justify-content: center;
