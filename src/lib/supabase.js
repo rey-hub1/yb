@@ -15,3 +15,8 @@ export const SUPABASE_ANON_KEY = key ?? null;
 export const POST_MESSAGE_URL = url
   ? `${url}/functions/v1/post-message`
   : null;
+
+// URL edge function untuk hapus pesan (diproteksi admin token server-side)
+export const DELETE_MESSAGE_URL = url
+  ? `${url}/functions/v1/delete-message`
+  : null;

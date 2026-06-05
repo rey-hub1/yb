@@ -48,10 +48,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const raw = (payload.body ?? "").trim();
-  const isPinned = raw.startsWith("/pin ");
-  const text = isPinned ? raw.slice(5).trim() : raw;
-
+  const text = (payload.body ?? "").trim();
   if (!text) {
     return new Response(JSON.stringify({ error: "Pesan kosong." }), {
       status: 400,
@@ -95,7 +92,6 @@ Deno.serve(async (req) => {
       body: text,
       color: payload.color ?? 0,
       ip_hash: ipHash,
-      is_pinned: isPinned,
     })
     .select()
     .single();

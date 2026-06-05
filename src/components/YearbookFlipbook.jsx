@@ -210,9 +210,6 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
   const [muted, setMuted] = useState(() => {
     try { return localStorage.getItem("yb-flip-muted") === "1"; } catch { return false; }
   });
-  const [zoomOpen, setZoomOpen] = useState(false);
-  const [zoomScale, setZoomScale] = useState(1);
-  const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
   const flipBookRef = useRef(null);
   const overlayRef = useRef(null);
   const backgroundTimeoutRef = useRef(null);
@@ -261,68 +258,6 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
       else flipNext();
     }
   }, [flipPrev, flipNext]);
-
-  // ── Zoom overlay: pinch (HP) / wheel (PC) buat scale, drag buat pan ──────────
-  const ZOOM_MIN = 1, ZOOM_MAX = 4;
-  const openZoom = useCallback(() => {
-    setZoomScale(1);
-    setZoomOffset({ x: 0, y: 0 });
-    setZoomOpen(true);
-  }, []);
-  const closeZoom = useCallback(() => setZoomOpen(false), []);
-  const resetZoom = useCallback(() => {
-    setZoomScale(1);
-    setZoomOffset({ x: 0, y: 0 });
-  }, []);
-
-  // pointer aktif buat deteksi pinch & drag
-  const zoomPointers = useRef(new Map());
-  const pinchRef = useRef({ dist: 0, scale: 1 });
-  const panRef = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
-  const lastTapRef = useRef(0);
-
-  const onZoomPointerDown = useCallback((e) => {
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    zoomPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (zoomPointers.current.size === 2) {
-      const [a, b] = [...zoomPointers.current.values()];
-      pinchRef.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), scale: zoomScale };
-    } else {
-      panRef.current = { x: e.clientX, y: e.clientY, ox: zoomOffset.x, oy: zoomOffset.y };
-      // double-tap reset
-      const now = Date.now();
-      if (now - lastTapRef.current < 300) resetZoom();
-      lastTapRef.current = now;
-    }
-  }, [zoomScale, zoomOffset, resetZoom]);
-
-  const onZoomPointerMove = useCallback((e) => {
-    if (!zoomPointers.current.has(e.pointerId)) return;
-    zoomPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (zoomPointers.current.size >= 2) {
-      const [a, b] = [...zoomPointers.current.values()];
-      const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinchRef.current.dist > 0) {
-        const next = pinchRef.current.scale * (dist / pinchRef.current.dist);
-        setZoomScale(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next)));
-      }
-    } else if (zoomScale > 1) {
-      setZoomOffset({
-        x: panRef.current.ox + (e.clientX - panRef.current.x),
-        y: panRef.current.oy + (e.clientY - panRef.current.y),
-      });
-    }
-  }, [zoomScale]);
-
-  const onZoomPointerUp = useCallback((e) => {
-    zoomPointers.current.delete(e.pointerId);
-    if (zoomPointers.current.size < 2) pinchRef.current.dist = 0;
-  }, []);
-
-  const onZoomWheel = useCallback((e) => {
-    e.preventDefault();
-    setZoomScale((s) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, s - e.deltaY * 0.0015)));
-  }, []);
 
   const toggleFullscreen = useCallback(() => {
     const el = overlayRef.current;
@@ -383,21 +318,13 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
   useEffect(() => {
     const fn = (e) => {
       if (e.key === "Escape") {
-        if (zoomOpen) closeZoom();
-        else if (!document.fullscreenElement) onClose();
-      } else if (zoomOpen) {
-        return; // navigasi halaman dimatiin saat zoom kebuka
+        if (!document.fullscreenElement) onClose();
       } else if (e.key === "ArrowLeft") flipPrev();
       else if (e.key === "ArrowRight") flipNext();
     };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
-  }, [onClose, flipPrev, flipNext, zoomOpen, closeZoom]);
-
-  // offset balik ke tengah pas zoom balik ke 1×
-  useEffect(() => {
-    if (zoomScale <= 1) setZoomOffset({ x: 0, y: 0 });
-  }, [zoomScale]);
+  }, [onClose, flipPrev, flipNext]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -478,15 +405,6 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
             </span>
           )}
           <span className="yb-action-divider" aria-hidden="true" />
-          {numPages && (
-            <button onClick={openZoom} className="yb-action-btn" aria-label="Perbesar halaman">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
-                <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
-              </svg>
-              <span className="yb-action-tooltip">Perbesar</span>
-            </button>
-          )}
           <button onClick={toggleMuted} className="yb-action-btn" aria-label={muted ? "Nyalakan suara" : "Matikan suara"}>
             {muted ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -655,46 +573,6 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
         </>
       )}
 
-      {/* Zoom overlay — spread aktif, bisa pinch/wheel + pan */}
-      {zoomOpen && numPages && (() => {
-        const { left, right } = getSpreadPageNumbers(currentPage, numPages);
-        return (
-          <div
-            className="yb-zoom-overlay"
-            onPointerDown={onZoomPointerDown}
-            onPointerMove={onZoomPointerMove}
-            onPointerUp={onZoomPointerUp}
-            onPointerCancel={onZoomPointerUp}
-            onWheel={onZoomWheel}
-          >
-            <div className="yb-zoom-bar">
-              <span className="yb-zoom-hint">Cubit / scroll buat zoom · seret buat geser · ketuk 2× reset</span>
-              <span className="yb-zoom-level">{Math.round(zoomScale * 100)}%</span>
-              <button onClick={closeZoom} className="yb-action-btn yb-close-btn" aria-label="Tutup zoom">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-            <div
-              className="yb-zoom-stage"
-              style={{
-                transform: `translate(${zoomOffset.x}px, ${zoomOffset.y}px) scale(${zoomScale})`,
-                cursor: zoomScale > 1 ? "grab" : "default",
-              }}
-            >
-              <Document file={viewPdf} loading={null}>
-                <Page pageNumber={left} width={dispW}
-                  renderTextLayer={false} renderAnnotationLayer={false} />
-                {right && (
-                  <Page pageNumber={right} width={dispW}
-                    renderTextLayer={false} renderAnnotationLayer={false} />
-                )}
-              </Document>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
@@ -832,7 +710,7 @@ function SplashScreen({ onEnter }) {
       <div className="yb-splash-frame" aria-hidden="true" />
 
       <div className="yb-splash-inner">
-        <img src="/logo.png" alt="Logo" className="yb-splash-logo" style={{ "--d": "0.1s" }} onError={e => e.target.style.display='none'} />
+        <img src="/logo_baru.jpeg" alt="Logo" className="yb-splash-logo" style={{ "--d": "0.1s" }} onError={e => e.target.style.display='none'} />
         <p className="yb-splash-eyebrow" style={{ "--d": "0.22s" }}>
           <span className="yb-splash-eyebrow-rule" />
           2023 &mdash; 2026
@@ -947,7 +825,7 @@ export default function YearbookApp() {
         <nav className="yb-navbar">
           <div className="yb-navbar-inner">
             <span className="yb-navbar-brand">
-              <img src="/logo.png" alt="Logo" className="yb-navbar-logo" />
+              <img src="/logomaha.png" alt="Logo" className="yb-navbar-logo" />
               <span className="yb-navbar-brand-text">
                 Yearbook
                 <em>SMKN 2 Purwakarta · 2026</em>
@@ -971,7 +849,7 @@ export default function YearbookApp() {
             <div className="yb-tape yb-tape--left"  aria-hidden="true" style={{ transform: "rotate(-3deg)" }} />
             <div className="yb-tape yb-tape--right" aria-hidden="true" style={{ transform: "rotate(4deg)" }} />
 
-            <img src="/logo.png" alt="Logo 2026" className="yb-hero-logo" />
+            <img src="/logomaha.png" alt="Logo 2026" className="yb-hero-logo" />
 
             <p className="yb-hero-meta">
               <span>Vol. 01</span>
@@ -1068,7 +946,7 @@ export default function YearbookApp() {
           <div className="yb-footer-divider" aria-hidden="true">
             <span /><em>rey</em><span />
           </div>
-          <img src="/logo.png" alt="" className="yb-footer-logo" onError={e => e.target.style.display='none'} />
+          <img src="/logomaha.png" alt="" className="yb-footer-logo" onError={e => e.target.style.display='none'} />
           <p className="yb-footer-motto">ini milik kita, untuk selamanya</p>
           <p className="yb-footer-meta">
             <span>SMKN 2 Purwakarta</span>
@@ -1281,7 +1159,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 
 .yb-navbar-logo {
-  width: 36px; height: 36px;
+  width: 46px; height: 46px;
   object-fit: contain;
   border-radius: 6px;
 }
@@ -1302,8 +1180,8 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 
 .yb-hero-logo {
-  width: 96px;
-  height: 96px;
+  width: 148px;
+  height: 148px;
   object-fit: contain;
   margin: 0 auto 22px;
   display: block;
@@ -1951,7 +1829,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 /* ── Peringatan penyalahgunaan ── */
 .yb-kenangan-warn {
   display: flex; align-items: flex-start; gap: 10px;
-  max-width: 460px; margin: -44px auto 48px;
+  max-width: 460px; margin: -44px auto 24px;
   padding: 12px 16px;
   background: rgba(214, 168, 90, 0.14);
   border: 1px solid rgba(196, 140, 60, 0.4);
@@ -1968,7 +1846,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 /* ── Cari note ── */
 .yb-board-search {
   position: relative; display: flex; align-items: center;
-  max-width: 440px; margin: 0 auto 10px;
+  max-width: 440px; margin: 0 auto 22px;
 }
 .yb-board-search-ic {
   position: absolute; left: 14px; width: 17px; height: 17px;
@@ -2060,17 +1938,58 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 
 .yb-note--pinned {
   box-shadow:
-    0 0 0 2px var(--yb-accent),
-    0 6px 20px rgba(184,94,69,0.18);
-  z-index: 1;
+    0 12px 36px rgba(60, 42, 24, 0.28),
+    0 28px 64px rgba(60, 42, 24, 0.14),
+    0 2px 6px rgba(0,0,0,0.1);
+  z-index: 2;
 }
+.yb-note--pinned:hover {
+  box-shadow:
+    0 16px 48px rgba(60, 42, 24, 0.32),
+    0 36px 80px rgba(60, 42, 24, 0.18);
+  z-index: 5;
+}
+
+/* CSS pushpin — kepala bulat 3D + batang metalik */
 .yb-note-pin {
   position: absolute;
-  top: -10px;
-  right: 10px;
-  font-size: 18px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 37% 33%, #f5a89a, #c0392b 52%, #8e1a10);
+  box-shadow:
+    inset 2px 2px 4px rgba(255,255,255,0.38),
+    inset -1px -1px 3px rgba(0,0,0,0.35),
+    0 5px 12px rgba(0,0,0,0.4),
+    0 2px 4px rgba(0,0,0,0.25);
   pointer-events: none;
+  z-index: 3;
+}
+/* shine spot */
+.yb-note-pin::before {
+  content: '';
+  position: absolute;
+  top: 3px; left: 4px;
+  width: 5px; height: 4px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.55);
+  transform: rotate(-20deg);
+}
+/* batang pin metalik */
+.yb-note-pin::after {
+  content: '';
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 12px;
+  background: linear-gradient(to bottom, #aab3ba 0%, #8a9199 45%, #606970 100%);
+  border-radius: 0 0 2px 2px;
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.22);
 }
 
 @media (max-width: 540px) {
@@ -2289,7 +2208,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 /* swipe/flip di HP: cegah browser ambil gesture horizontal jadi scroll */
 .yb-flipbook,
 .yb-flipbook * {
-  touch-action: none;
+  touch-action: pan-y pinch-zoom;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -2297,7 +2216,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 /* layer transparan penangkap tap/swipe — di atas buku, di semua device */
 .yb-tap-layer {
   position: absolute; inset: 0; z-index: 20;
-  touch-action: none;
+  touch-action: pan-y pinch-zoom;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -2467,47 +2386,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   margin-left: 1px; vertical-align: super;
 }
 
-/* ── Zoom overlay ─────────────────────────── */
-.yb-zoom-overlay {
-  position: fixed; inset: 0; z-index: 60;
-  background: rgba(4,4,4,0.94);
-  backdrop-filter: blur(6px);
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
-  touch-action: none;
-  animation: ybLoadIn 0.25s ease both;
-}
-.yb-zoom-bar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
-  display: flex; align-items: center; gap: 16px;
-  padding: 18px 22px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
-  pointer-events: none;
-}
-.yb-zoom-bar > * { pointer-events: auto; }
-.yb-zoom-hint {
-  flex: 1; min-width: 0;
-  font-family: 'Archivo', sans-serif; font-size: 11px; letter-spacing: 0.04em;
-  color: rgba(255,255,255,0.5);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.yb-zoom-level {
-  font-family: 'Archivo', sans-serif; font-size: 12px; font-weight: 700;
-  letter-spacing: 0.08em; color: var(--yb-overlay-accent);
-  font-variant-numeric: tabular-nums; min-width: 44px; text-align: right;
-}
-.yb-zoom-stage {
-  display: flex; align-items: center;
-  transform-origin: center center;
-  will-change: transform;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.7);
-}
-.yb-zoom-stage .react-pdf__Page,
-.yb-zoom-stage canvas { display: block; }
-@media (max-width: 600px) {
-  .yb-zoom-hint { font-size: 10px; }
-  .yb-zoom-bar { padding: 14px 16px; gap: 10px; }
-}
 
 /* ── Error ───────────────────────────────── */
 .yb-error-state {
@@ -2762,7 +2640,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 
 .yb-splash-logo {
-  width: 76px; height: 76px; object-fit: contain;
+  width: 120px; height: 120px; object-fit: contain;
   margin-bottom: 22px;
   filter: drop-shadow(0 4px 20px rgba(0,0,0,0.7));
 }

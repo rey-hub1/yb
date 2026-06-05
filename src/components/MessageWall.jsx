@@ -274,10 +274,7 @@ export default function MessageWall() {
                     ⚠
                 </span>
                 <p>
-                    Pesan tampil <b>publik</b> dan bisa <b>anonim</b>. Jangan
-                    mengatasnamakan atau memakai nama orang lain, dan jangan
-                    menulis hal yang menyinggung/SARA. Pesan yang menyalahi
-                    aturan bisa dihapus admin. ~rey
+                    <b>Publik & anonim.</b> Dilarang catat nama orang lain atau tulis hal menyinggung/SARA. Pesan melanggar bisa dihapus. ~rey
                 </p>
             </div>
 
@@ -335,29 +332,32 @@ export default function MessageWall() {
                             )}
                             <div className="yb-board">
                                 {[...shown]
-                                    .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
+                                    .sort((a, b) => {
+                                        const ap = (a.body ?? "").startsWith("/pin ") ? 1 : 0;
+                                        const bp = (b.body ?? "").startsWith("/pin ") ? 1 : 0;
+                                        return bp - ap;
+                                    })
                                     .map((m) => {
+                                    const isPinned = (m.body ?? "").startsWith("/pin ");
+                                    const displayBody = isPinned ? m.body.slice(5) : m.body;
                                     const v = noteVariant(m.id);
-                                    const t =
-                                        m.color != null ? m.color : v.tone;
+                                    const t = m.color != null ? m.color : v.tone;
                                     return (
                                         <article
                                             key={m.id}
-                                            className={`yb-note yb-note--t${t}${m.is_pinned ? " yb-note--pinned" : ""}`}
+                                            className={`yb-note yb-note--t${t}${isPinned ? " yb-note--pinned" : ""}`}
                                             style={{
-                                                "--rot": `${v.rot}deg`,
+                                                "--rot": isPinned ? `${v.rot * 0.35}deg` : `${v.rot}deg`,
                                                 "--tape-rot": `${v.tapeRot}deg`,
                                             }}
                                         >
-                                            {m.is_pinned && (
-                                                <span className="yb-note-pin" aria-label="Ditempel">📌</span>
+                                            {isPinned ? (
+                                                <span className="yb-note-pin" aria-hidden="true" />
+                                            ) : (
+                                                <span className="yb-note-tape" aria-hidden="true" />
                                             )}
-                                            <span
-                                                className="yb-note-tape"
-                                                aria-hidden="true"
-                                            />
                                             <p className="yb-note-body">
-                                                {m.body}
+                                                {displayBody}
                                             </p>
                                             <div className="yb-note-meta">
                                                 <span className="yb-note-from">
