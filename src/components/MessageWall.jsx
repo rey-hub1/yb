@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { supabase, POST_MESSAGE_URL } from "../lib/supabase";
+import { supabase, POST_MESSAGE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
 
 const MAX_LEN = 80;
 const MAX_NAME = 18;
@@ -142,7 +142,10 @@ export default function MessageWall() {
         try {
             const res = await fetch(POST_MESSAGE_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                },
                 body: JSON.stringify({ name: name.trim() || null, body: text, color: tone }),
             });
             status = res.status;
