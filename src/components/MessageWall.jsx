@@ -70,7 +70,7 @@ export default function MessageWall() {
         if (!supabase) return false;
         const { data, error: err } = await supabase
             .from("messages")
-            .select("*")
+            .select("id, name, body, color, created_at")
             .order("created_at", { ascending: false })
             .limit(100);
         if (err) {
