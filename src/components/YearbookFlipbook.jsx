@@ -96,6 +96,32 @@ function ProgressivePage({ pageNumber, isFirst, onFirstRender }) {
           />
         </div>
       )}
+      {/* Loading Indicator untuk HD */}
+      {loReady && !hdReady && (
+        <div style={{
+          position: "absolute",
+          bottom: "16px",
+          right: "16px",
+          backgroundColor: "rgba(255, 255, 255, 0.9)",
+          backdropFilter: "blur(4px)",
+          padding: "8px",
+          borderRadius: "50%",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+          zIndex: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <div style={{
+            width: "14px",
+            height: "14px",
+            border: "2px solid rgba(0,0,0,0.1)",
+            borderTopColor: "rgba(0,0,0,0.6)",
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+          }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -505,6 +531,15 @@ function SplashScreen({ onEnter }) {
   );
 }
 
+// ─── Device tier detection ────────────────────────────────────────────────────
+function isLowEndDevice() {
+  const memory = navigator.deviceMemory ?? 4;
+  const cores  = navigator.hardwareConcurrency ?? 4;
+  const conn   = navigator.connection?.effectiveType ?? '4g';
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return reduced || memory <= 2 || cores <= 2 || conn === 'slow-2g' || conn === '2g';
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function YearbookApp() {
   const [selected, setSelected] = useState(null);
@@ -516,7 +551,6 @@ export default function YearbookApp() {
     return initial;
   });
   const [entered, setEntered]   = useState(() => window.location.hash === "#admin");
-  const [darkMode, setDarkMode] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showVideoBanner, setShowVideoBanner] = useState(() => {
     return localStorage.getItem('yb-video-dismissed-v2') !== '1';
@@ -524,7 +558,13 @@ export default function YearbookApp() {
   const [view, setView] = useState(() => {
     return window.location.hash === "#admin" ? "admin" : "user";
   });
+  const [lowEnd] = useState(isLowEndDevice);
   const audioRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.style.scrollBehavior = lowEnd ? 'auto' : 'smooth';
+    return () => { document.documentElement.style.scrollBehavior = ''; };
+  }, [lowEnd]);
 
   const toggleAudio = () => {
     if (audioRef.current) {
@@ -575,8 +615,8 @@ export default function YearbookApp() {
       <style>{STYLES}</style>
       <audio ref={audioRef} src="https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1cb8.mp3" loop />
       
-      <div className={`yb-page ${darkMode ? "dark" : ""}`}>
-        <FloatingParticles />
+      <div className="yb-page">
+        {!lowEnd && <FloatingParticles />}
       
         {showVideoBanner && (
           <div className="yb-video-banner-overlay">
@@ -615,10 +655,6 @@ export default function YearbookApp() {
               <button onClick={toggleAudio} className="yb-nav-btn" title="Putar / jeda musik" aria-label="Putar atau jeda musik">
                 <span className="yb-nav-ico">{isPlaying ? "⏸" : "▶"}</span>
                 <span className="yb-nav-lbl">BGM</span>
-              </button>
-              <button onClick={() => setDarkMode(!darkMode)} className="yb-nav-btn" title="Ganti tema" aria-label="Ganti tema terang / gelap">
-                <span className="yb-nav-ico">{darkMode ? "☀️" : "🌙"}</span>
-                <span className="yb-nav-lbl">{darkMode ? "Light" : "Dark"}</span>
               </button>
               <button onClick={navigateToAdmin} className="yb-nav-btn yb-nav-btn--admin">
                 Admin
@@ -782,21 +818,6 @@ const STYLES = `
   --yb-card-hover-rot: -1.5deg;
 }
 
-.yb-page.dark {
-  --yb-bg:          #161311;
-  --yb-bg-dk:       #0e0c0b;
-  --yb-bg-lt:       #211c19;
-  --yb-ink:         #e8e4db;
-  --yb-ink-mid:     #a39b8b;
-  --yb-ink-faint:   #6b6355;
-  --yb-border:      rgba(255, 255, 255, 0.08);
-  --yb-navbar-bg:   rgba(22, 19, 17, 0.85);
-  --yb-card-bg:     #1e1a17;
-  --yb-card-shadow: 
-    0 4px 12px rgba(0,0,0,0.4),
-    inset 0 0 0 1px rgba(255,255,255,0.05),
-    inset 0 2px 4px rgba(255,255,255,0.02);
-}
 
 @keyframes fadeUpStagger {
   from { opacity: 0; transform: translateY(30px); }
@@ -872,9 +893,6 @@ const STYLES = `
   color: var(--yb-ink-faint);
   display: flex; align-items: center; justify-content: center;
 }
-.yb-page.dark .yb-particle--icon {
-  color: rgba(255,255,255,0.2);
-}
 .yb-particle--icon svg {
   width: 100%; height: 100%;
 }
@@ -923,7 +941,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   white-space: nowrap;
 }
 .yb-nav-ico { font-size: 13px; line-height: 1; }
-.yb-page.dark .yb-nav-btn { background: rgba(255,255,255,0.04); }
 .yb-nav-btn:hover {
   background: var(--yb-ink); color: var(--yb-bg);
   border-color: var(--yb-ink);
@@ -1015,7 +1032,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   white-space: nowrap; z-index: 0;
   letter-spacing: -0.03em;
 }
-.yb-page.dark .yb-hero-ghost { opacity: 0.05; }
 
 .yb-hero-meta {
   display: flex; align-items: center; justify-content: center;
@@ -1295,7 +1311,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: -2;
 }
-.yb-page.dark .yb-book-back { background: #221e19; }
 .yb-card:hover .yb-book-back { transform: translateZ(-8px) translateX(9px); }
 
 /* ── Book page stack ─────────────────────────────── */
@@ -1316,7 +1331,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   position: absolute; top: 0; right: 2px; bottom: 0; left: 0;
   background: repeating-linear-gradient(to right, transparent, transparent 1px, rgba(0,0,0,0.04) 2px, transparent 3px);
 }
-.yb-page.dark .yb-book-pages { background: #2a2520; border-color: rgba(255,255,255,0.05); }
 .yb-card:hover .yb-book-pages { transform: translateZ(-5px) translateX(5px); }
 
 /* ── Book front face ─────────────────────────────── */
@@ -1414,7 +1428,6 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   border-top: 1px solid var(--yb-border);
   background: linear-gradient(0deg, rgba(255,255,255,0.35) 0%, transparent 100%);
 }
-.yb-page.dark .yb-footer { background: linear-gradient(0deg, rgba(255,255,255,0.02) 0%, transparent 100%); }
 
 .yb-footer-divider {
   display: flex; align-items: center; justify-content: center; gap: 14px;

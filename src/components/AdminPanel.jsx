@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { CLASSES } from "../data/classes";
 import { extractPdfPalette, buildPalette, isLightColor, getViewerThemeStyle } from "../utils/colorExtractor";
+import NamesGenerator from "./NamesGenerator";
 
 function ColorPicker({ color, onChange, label }) {
   const [inputValue, setInputValue] = useState(color);
@@ -614,6 +615,7 @@ export default function AdminPanel({ onBack }) {
             <pre>{generateConfigString()}</pre>
           </div>
         </div>
+        <NamesGenerator />
       </div>
     </div>
   );
