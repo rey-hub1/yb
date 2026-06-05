@@ -16,9 +16,3 @@ export const CLASSES = [
   { id: 15, name: "BD 1",  pdf: "/yearbook/BD-1.pdf",   cover: "/yearbook/covers/BD-1.jpg",   hue: "#C53030", palette: {"primary":"#7b6553","secondary":"#aa9580","accent":"#8d7b6b","left":"#7a6554","right":"#ad9985"} },
   { id: 16, name: "BD 2",  pdf: "/yearbook/BD-2.pdf",   cover: "/yearbook/covers/BD-2.jpg",   hue: "#9B1C1C", palette: {"primary":"#46372c","secondary":"#617754","accent":"#60534a","left":"#6d7c56","right":"#94a67a"} },
 ];
-
-export const THEMES = [
-  { id: "paper",     label: "Kertas"    },
-  { id: "modern",    label: "Modern"    },
-  { id: "editorial", label: "Editorial" },
-];

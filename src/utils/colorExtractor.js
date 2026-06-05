@@ -291,31 +291,18 @@ export async function extractPdfPalette(pdfUrl, pageNumber, fallbackColor) {
   return palettePromise;
 }
 
-export function getCardStyle(cls, index, theme, extractedPalettes) {
+export function getCardStyle(cls, index, extractedPalettes) {
   const palette = extractedPalettes[cls.pdf] ?? cls.palette ?? buildPalette(cls.hue);
   const hue = palette.primary;
-  const baseStyle = {
+
+  return {
     "--hue": hue,
     "--delay": `${index * 40}ms`,
   };
-
-  if (theme !== "editorial") return baseStyle;
-
-  const lightCard = isLightColor(hue);
-
-  return {
-    ...baseStyle,
-    "--yb-card-ink": lightCard ? "#080808" : "#ffffff",
-    "--yb-card-ink-soft": lightCard ? "rgba(8,8,8,0.58)" : "rgba(255,255,255,0.58)",
-    "--yb-card-ink-muted": lightCard ? "rgba(8,8,8,0.46)" : "rgba(255,255,255,0.5)",
-    "--yb-card-ink-hover": lightCard ? "rgba(8,8,8,0.82)" : "rgba(255,255,255,0.9)",
-    "--yb-card-rule-color": lightCard ? "rgba(8,8,8,0.18)" : "rgba(255,255,255,0.2)",
-    "--yb-card-number-color": lightCard ? "rgba(8,8,8,0.08)" : "rgba(255,255,255,0.08)",
-  };
 }
 
-export function getViewerThemeStyle(theme, palette) {
-  if (theme !== "editorial" || !palette) return undefined;
+export function getViewerThemeStyle(palette) {
+  if (!palette) return undefined;
 
   const primary = palette.primary;
   const secondary = palette.secondary;

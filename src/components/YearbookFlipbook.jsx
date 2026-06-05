@@ -49,10 +49,9 @@ function useBookScale() {
 }
 
 // ─── FlipPage wrapper ─────────────────────────────────────────────────────────
-const FlipPage = React.forwardRef(function FlipPage({ children, theme }, ref) {
-  const bg = theme === "editorial" ? "#ffffff" : theme === "modern" ? "#ffffff" : "#faf3e4";
+const FlipPage = React.forwardRef(function FlipPage({ children }, ref) {
   return (
-    <div ref={ref} style={{ width: PAGE_W, height: PAGE_H, background: bg, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div ref={ref} style={{ width: PAGE_W, height: PAGE_H, background: "#ffffff", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {children}
     </div>
   );
@@ -148,7 +147,7 @@ function BookCoverThumbnail({ cover, hue }) {
 }
 
 // ─── Flipbook Viewer ──────────────────────────────────────────────────────────
-function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
+function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
   const viewPdf = classData.pdf.replace(".pdf", "-optimized.pdf");
   const [numPages, setNumPages]   = useState(null);
   const [documentReady, setDocumentReady] = useState(false);
@@ -242,7 +241,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
   }, []);
 
   useEffect(() => {
-    if (theme !== "editorial" || !numPages) return;
+    if (!numPages) return;
 
     const { left, right } = getSpreadPageNumbers(currentPage, numPages);
     let cancelled = false;
@@ -252,13 +251,13 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
       right ? extractPdfPalette(viewPdf, right, classData.hue) : Promise.resolve(null),
     ]).then(([leftPalette, rightPalette]) => {
       if (cancelled || !leftPalette) return;
-      setSpreadThemeStyle(getViewerThemeStyle(theme, buildSpreadPalette(leftPalette, rightPalette)));
+      setSpreadThemeStyle(getViewerThemeStyle(buildSpreadPalette(leftPalette, rightPalette)));
     });
 
     return () => {
       cancelled = true;
     };
-  }, [classData.hue, viewPdf, currentPage, numPages, theme]);
+  }, [classData.hue, viewPdf, currentPage, numPages]);
 
   useEffect(() => {
     if (!spreadThemeStyle) return;
@@ -289,7 +288,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
   const RENDER_WINDOW = 4;
 
   return (
-    <div ref={overlayRef} className={`yb-overlay yb-overlay--${theme}`} style={displayedThemeStyle}>
+    <div ref={overlayRef} className="yb-overlay" style={displayedThemeStyle}>
       <div className="yb-overlay-bg-stack" aria-hidden="true">
         <div className="yb-overlay-bg-layer yb-overlay-bg-layer--current" />
         {fadingThemeStyle && (
@@ -387,7 +386,7 @@ function FlipBookViewer({ classData, theme, onClose, viewerThemeStyle }) {
                 className="yb-flipbook"
               >
                 {Array.from({ length: numPages }, (_, i) => (
-                  <FlipPage key={i} theme={theme}>
+                  <FlipPage key={i}>
                     {Math.abs(i - currentPage) <= RENDER_WINDOW ? (
                       <ProgressivePage
                         pageNumber={i + 1}
@@ -762,7 +761,7 @@ export default function YearbookApp() {
                   onMouseEnter={() => fetch(cls.pdf.replace(".pdf", "-optimized.pdf"), { priority: "low" }).catch(() => {})}
                   className="yb-card"
                   style={{
-                    ...getCardStyle(cls, i, "paper", extractedPalettes),
+                    ...getCardStyle(cls, i, extractedPalettes),
                     "--i": i
                   }}
                 >
@@ -810,9 +809,8 @@ export default function YearbookApp() {
       {selected && (
         <FlipBookViewer
           classData={selected}
-          theme="editorial"
           onClose={() => setSelected(null)}
-          viewerThemeStyle={getViewerThemeStyle("editorial", extractedPalettes[selected.pdf] ?? selected.palette ?? buildPalette(selected.hue))}
+          viewerThemeStyle={getViewerThemeStyle(extractedPalettes[selected.pdf] ?? selected.palette ?? buildPalette(selected.hue))}
         />
       )}
     </>

@@ -180,7 +180,7 @@ export default function AdminPanel({ onBack }) {
       return `  { id: ${cls.id}, name: "${cls.name}", pdf: "${cls.pdf}", hue: "${hue}"${palString} },`;
     });
 
-    return `export const CLASSES = [\n${items.join("\n")}\n];\n\nexport const THEMES = [\n  { id: "paper",     label: "Kertas"    },\n  { id: "modern",    label: "Modern"    },\n  { id: "editorial", label: "Editorial" },\n];\n`;
+    return `export const CLASSES = [\n${items.join("\n")}\n];\n`;
   }, [customHues, extractedPalettes]);
 
   const handleCopy = useCallback(() => {
@@ -435,7 +435,7 @@ export default function AdminPanel({ onBack }) {
               const palette = extractedPalettes[activeCls.pdf] || null;
               const currentHue = palette ? palette.primary : (customHues[activeCls.id] || activeCls.hue);
               const activePalette = palette || buildPalette(currentHue);
-              const viewerStyle = getViewerThemeStyle("editorial", activePalette);
+              const viewerStyle = getViewerThemeStyle(activePalette);
 
               return (
                 <>
@@ -479,7 +479,7 @@ export default function AdminPanel({ onBack }) {
                         </span>
                       </div>
                     </div>
-                    <span className="text-[11px] text-slate-500 font-mono">Simulasi Kartu Kelas (Paper Theme)</span>
+                    <span className="text-[11px] text-slate-500 font-mono">Simulasi Kartu Kelas</span>
                   </div>
 
                   {/* Gradient Simulation Wrapper */}
@@ -554,7 +554,7 @@ export default function AdminPanel({ onBack }) {
                         <div className="absolute left-1/2 top-0 bottom-0 w-1.5 -translate-x-1/2 bg-gradient-to-r from-black/10 via-black/20 to-black/10" />
                       </div>
                     </div>
-                    <span className="text-[11px] text-slate-500 font-mono">Simulasi Gradient Background (Editorial Theme)</span>
+                    <span className="text-[11px] text-slate-500 font-mono">Simulasi Gradient Background</span>
                   </div>
                 </>
               );
