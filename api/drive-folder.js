@@ -21,17 +21,21 @@ export async function fetchFolderFiles(id) {
   if (!r.ok) throw new Error(`Drive responded ${r.status}`);
   const html = await r.text();
 
-  // Tiap file = <div ... id="entry-<FILE_ID>" ...> dengan judul di .flip-entry-title.
-  // Lazy match dari id ke flip-entry-title terdekat → pasangan id+nama.
+  // Tiap file = <div ... id="entry-<FILE_ID>" ...> dengan ikon mime
+  // (.../type/<image|video|...>/...) lalu judul di .flip-entry-title.
+  // Lazy match dari id → ikon tipe → title (semua dalam 1 entry).
   const files = [];
   const seen = new Set();
-  const re = /id="entry-([-\w]+)"[\s\S]*?flip-entry-title">([^<]*)/g;
+  const re = /id="entry-([-\w]+)"[\s\S]*?\/type\/([a-z]+)\/[^"\s]*[\s\S]*?flip-entry-title">([^<]*)/g;
   let m;
   while ((m = re.exec(html))) {
     const fid = m[1];
     if (seen.has(fid)) continue;
     seen.add(fid);
-    files.push({ id: fid, name: (m[2] || "").trim() });
+    // top-level mime → kind sederhana: video | image | other
+    const top = m[2];
+    const kind = top === "video" ? "video" : top === "image" ? "image" : "other";
+    files.push({ id: fid, name: (m[3] || "").trim(), kind });
   }
   return files;
 }

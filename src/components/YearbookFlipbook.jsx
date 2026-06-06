@@ -820,6 +820,11 @@ function GalleryTile({ file }) {
         onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}
       />
+      {file.kind === "video" && (
+        <span className="yb-sf-tile-play" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
+        </span>
+      )}
     </a>
   );
 }
@@ -927,21 +932,35 @@ function DocSection({ section, overrides, onOpen }) {
       </div>
 
       <div className="yb-sf-grid">
-        {section.boxes.map((box, i) => (
-          <button
-            key={box.id}
-            className="yb-sf-card yb-doc-card"
-            style={{ "--i": i }}
-            onClick={() => onOpen({ ...box, sectionLabel: section.label })}
-          >
-            <DocCover box={box} override={overrides[box.id]} />
-            <span className="yb-sf-card-play" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
-            </span>
-            <span className="yb-sf-card-name">{box.name}</span>
-            {box.sub && <span className="yb-sf-card-sub">{box.sub}</span>}
-          </button>
-        ))}
+        {section.boxes.map((box, i) => {
+          const isDisabled = box.disabled;
+          return (
+            <button
+              key={box.id}
+              className={`yb-sf-card yb-doc-card ${isDisabled ? 'yb-doc-card--disabled' : ''}`}
+              style={{ "--i": i }}
+              onClick={() => {
+                if (isDisabled) return;
+                onOpen({ ...box, sectionLabel: section.label });
+              }}
+              disabled={isDisabled}
+            >
+              <DocCover box={box} override={overrides[box.id]} />
+              {!isDisabled ? (
+                <span className="yb-sf-card-play" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
+                </span>
+              ) : (
+                <span className="yb-sf-card-lock" aria-hidden="true">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </span>
+              )}
+              <span className="yb-sf-card-name">{box.name}</span>
+              {!isDisabled && box.sub && <span className="yb-sf-card-sub">{box.sub}</span>}
+              {isDisabled && <span className="yb-sf-card-sub yb-doc-card-unavailable">Segera Hadir / Terkunci</span>}
+            </button>
+          );
+        })}
       </div>
 
       <a
@@ -3226,6 +3245,16 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   transition: opacity 0.3s ease;
 }
 .yb-sf-tile-spin { position: absolute; }
+.yb-sf-tile-play {
+  position: absolute;
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: rgba(20,14,8,0.55);
+  color: #fff;
+  pointer-events: none;
+}
+.yb-sf-tile-play svg { width: 16px; height: 16px; margin-left: 2px; }
 .yb-sf-modal-loading {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -3297,7 +3326,35 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 .yb-doc-card .yb-sf-card-name { color: #fff; position: relative; z-index: 2; }
 .yb-doc-card .yb-sf-card-sub { color: rgba(255,255,255,0.82); position: relative; z-index: 2; }
-.yb-doc-card:hover { transform: translateY(-5px); }
+.yb-doc-card:not(.yb-doc-card--disabled):hover { transform: translateY(-5px); }
+
+.yb-doc-card--disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+.yb-doc-card--disabled .yb-doc-cover-img {
+  filter: grayscale(100%) brightness(0.5);
+  transform: scale(1) !important;
+}
+.yb-doc-card--disabled .yb-doc-cover-ph {
+  filter: grayscale(100%) brightness(0.5);
+}
+.yb-doc-card--disabled .yb-sf-card-name {
+  color: rgba(255,255,255,0.6);
+}
+.yb-doc-card-unavailable {
+  color: #ff8e8e !important;
+  font-weight: 500;
+  position: relative;
+  z-index: 2;
+}
+.yb-sf-card-lock {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255,255,255,0.8);
+  z-index: 3;
+}
 
 .yb-doc-cover {
   position: absolute; inset: 0;
