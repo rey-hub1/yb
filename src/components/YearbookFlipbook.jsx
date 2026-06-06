@@ -1735,16 +1735,25 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 
 .yb-hero-scrolls {
   display: flex; justify-content: center; align-items: flex-start;
-  gap: 40px; flex-wrap: wrap;
+  gap: 16px; flex-wrap: wrap;
+  max-width: 600px;
+  margin: 0 auto;
 }
 .yb-hero-scroll {
   display: inline-flex; flex-direction: column; align-items: center; gap: 8px;
   font-family: var(--yb-page-font);
-  font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase;
+  font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase;
   color: var(--yb-ink-faint);
   text-decoration: none;
   transition: color 0.25s ease;
   animation: heroRise 1s cubic-bezier(0.16,1,0.3,1) 0.66s backwards;
+  flex: 1;
+  min-width: 100px;
+  max-width: 130px;
+  text-align: center;
+}
+.yb-hero-scroll span {
+  width: 100%;
 }
 .yb-hero-scroll svg {
   width: 18px; height: 18px;

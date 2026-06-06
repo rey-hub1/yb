@@ -488,7 +488,7 @@ export default function AdminNotes({ token: tokenProp, embedded = false }) {
                 <div style={D.headerLeft}>
                     <p style={D.kicker}>ADMIN PANEL</p>
                     <h1 style={D.title}>Sticky Memory</h1>
-                    <p style={D.sub}>Yearbook 2025 · {messages.length} note tersimpan</p>
+                    <p style={D.sub}>Yearbook 2026 · {messages.length} note tersimpan</p>
                 </div>
                 <nav style={D.nav}>
                     <button className="yn-btn" style={D.navBtn} onClick={fetchAll}>
