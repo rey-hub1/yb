@@ -5,6 +5,7 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
 import { CLASSES } from "../data/classes";
+import { DOC_SECTIONS, DOC_COVER_KEY, driveThumb } from "../data/documentation";
 import MessageWall from "./MessageWall";
 import {
   buildPalette,
@@ -480,7 +481,12 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
         )}
         {error && (
           <div className="yb-error-state">
-            <span>✦</span>
+            <span aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </span>
             <p>Gagal memuat PDF:</p>
             <code>{error}</code>
           </div>
@@ -719,7 +725,11 @@ function SplashScreen({ onEnter }) {
         <p className="yb-splash-sub" style={{ "--d": "0.5s" }}>ini milik kita, untuk selamanya</p>
         <button className="yb-splash-btn yb-splash-btn--ready" style={{ "--d": "0.64s" }} onClick={handleEnter}>
           <span>Buka Yearbook</span>
-          <span className="yb-splash-btn-arrow">→</span>
+          <span className="yb-splash-btn-arrow" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+            </svg>
+          </span>
         </button>
       </div>
     </div>
@@ -733,6 +743,185 @@ function isLowEndDevice() {
   const conn   = navigator.connection?.effectiveType ?? '4g';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   return reduced || memory <= 2 || cores <= 2 || conn === 'slow-2g' || conn === '2g';
+}
+
+
+// ─── Dokumentasi (Smart Fest + PDD + Foto Angkatan) ─────────────────────────────
+// Tiap kotak = 1 subfolder Drive. Klik → modal embed folder (lazy iframe).
+// Cover = foto acak dari folder (manifest covers[]), bisa di-override admin (localStorage).
+
+// baca override cover admin dari localStorage sekali (per render section)
+function readCoverOverrides() {
+  try { return JSON.parse(localStorage.getItem(DOC_COVER_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+// cover satu kotak: lazy-load thumbnail dengan placeholder + spinner, fallback icon.
+function DocCover({ box, override }) {
+  // tentukan sumber cover: override admin > foto acak dari pool. Dipilih sekali saat mount.
+  const [src] = useState(() => {
+    if (override) return /^https?:\/\//i.test(override) ? override : driveThumb(override);
+    if (box.covers && box.covers.length) {
+      return driveThumb(box.covers[Math.floor(Math.random() * box.covers.length)]);
+    }
+    return "";
+  });
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const showImg = src && !failed;
+
+  return (
+    <span className="yb-doc-cover" aria-hidden="true">
+      <span className="yb-doc-cover-ph">
+        <span className="yb-doc-cover-icon">{box.icon}</span>
+        {showImg && !loaded && <span className="yb-sf-spinner yb-doc-cover-spin" />}
+      </span>
+      {showImg && (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          className="yb-doc-cover-img"
+          style={{ opacity: loaded ? 1 : 0 }}
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+        />
+      )}
+      <span className="yb-doc-cover-scrim" />
+    </span>
+  );
+}
+
+function DocModal({ item, onClose }) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="yb-sf-modal" onClick={onClose}>
+      <div className="yb-sf-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="yb-sf-modal-head">
+          <div className="yb-sf-modal-meta">
+            <span className="yb-sf-modal-icon" aria-hidden="true">{item.icon}</span>
+            <div>
+              <h3 className="yb-sf-modal-title">{item.name}</h3>
+              <span className="yb-sf-modal-sub">{item.sectionLabel}</span>
+            </div>
+          </div>
+          <div className="yb-sf-modal-actions">
+            <a
+              href={`https://drive.google.com/drive/folders/${item.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="yb-sf-modal-btn"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              Buka di Drive
+            </a>
+            <button onClick={onClose} className="yb-sf-modal-btn yb-sf-modal-close" aria-label="Tutup">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="yb-sf-modal-body">
+          {!ready && (
+            <div className="yb-sf-modal-loading">
+              <span className="yb-sf-spinner" aria-hidden="true" />
+              Memuat galeri…
+            </div>
+          )}
+          <iframe
+            src={`https://drive.google.com/embeddedfolderview?id=${item.id}#grid`}
+            title={`Galeri ${item.name}`}
+            className="yb-sf-iframe"
+            loading="lazy"
+            onLoad={() => setReady(true)}
+            style={{ opacity: ready ? 1 : 0 }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocSection({ section, overrides, onOpen }) {
+  return (
+    <div className="yb-doc-sub" id={`dok-${section.id}`}>
+      <div className="yb-section-header">
+        <span className="yb-section-index">{section.index}</span>
+        <div className="yb-section-titles">
+          <p className="yb-section-label">{section.label}</p>
+          <p className="yb-section-desc">{section.boxes.length} kotak · {section.desc}</p>
+        </div>
+        <span className="yb-section-line" />
+      </div>
+
+      <div className="yb-sf-grid">
+        {section.boxes.map((box, i) => (
+          <button
+            key={box.id}
+            className="yb-sf-card yb-doc-card"
+            style={{ "--i": i }}
+            onClick={() => onOpen({ ...box, sectionLabel: section.label })}
+          >
+            <DocCover box={box} override={overrides[box.id]} />
+            <span className="yb-sf-card-play" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>
+            </span>
+            <span className="yb-sf-card-name">{box.name}</span>
+            {box.sub && <span className="yb-sf-card-sub">{box.sub}</span>}
+          </button>
+        ))}
+      </div>
+
+      <a
+        href={`https://drive.google.com/drive/folders/${section.folder}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="yb-sf-folder-link"
+      >
+        Lihat semua di Google Drive
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+        </svg>
+      </a>
+    </div>
+  );
+}
+
+function Documentation() {
+  const [open, setOpen] = useState(null);
+  const [overrides] = useState(readCoverOverrides);
+
+  return (
+    <section className="yb-sf yb-doc" id="dokumentasi">
+      <div className="yb-doc-intro">
+        <span className="yb-section-index yb-doc-intro-index">3</span>
+        <h2 className="yb-doc-intro-title">Dokumentasi</h2>
+        <p className="yb-doc-intro-desc">Smart Fest, dokumentasi PDD, dan foto angkatan — ketuk kotak untuk membuka galeri.</p>
+      </div>
+
+      {DOC_SECTIONS.map((section) => (
+        <DocSection key={section.id} section={section} overrides={overrides} onOpen={setOpen} />
+      ))}
+
+      {open && <DocModal item={open} onClose={() => setOpen(null)} />}
+    </section>
+  );
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -774,7 +963,11 @@ export default function YearbookApp() {
         {showVideoBanner && (
           <div className="yb-video-banner-overlay">
             <div className="yb-video-banner">
-              <button className="yb-video-banner-close" onClick={() => { setShowVideoBanner(false); localStorage.setItem('yb-video-dismissed-v2', '1'); }}>✕</button>
+              <button className="yb-video-banner-close" aria-label="Tutup" onClick={() => { setShowVideoBanner(false); localStorage.setItem('yb-video-dismissed-v2', '1'); }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
               <div className="yb-video-wrapper">
                 <iframe
                   src="https://www.youtube-nocookie.com/embed/uOMjhAj8aBI?autoplay=1&mute=1&start=31"
@@ -806,7 +999,33 @@ export default function YearbookApp() {
                 <em>SMKN 2 Purwakarta · 2026</em>
               </span>
             </span>
-            
+            <div className="yb-nav-actions">
+              <a href="#kelas" className="yb-nav-btn" title="Daftar Kelas" style={{ textDecoration: 'none' }}>
+                <span className="yb-nav-ico" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                </span>
+                <span className="yb-nav-lbl" style={{ marginLeft: 6 }}>Kelas</span>
+              </a>
+              <a href="#kenangan" className="yb-nav-btn" title="Sticky Memory" style={{ textDecoration: 'none' }}>
+                <span className="yb-nav-ico" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                </span>
+                <span className="yb-nav-lbl" style={{ marginLeft: 6 }}>Kenangan</span>
+              </a>
+              <a href="#dokumentasi" className="yb-nav-btn" title="Dokumentasi PDD" style={{ textDecoration: 'none' }}>
+                <span className="yb-nav-ico" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                </span>
+                <span className="yb-nav-lbl" style={{ marginLeft: 6 }}>Dokumentasi</span>
+              </a>
+              <span style={{ width: '1px', height: '16px', background: 'var(--yb-border)', margin: '0 4px' }} aria-hidden="true"></span>
+              <a href="/admin" className="yb-nav-btn yb-nav-btn--admin" title="Admin Dashboard" style={{ textDecoration: 'none' }}>
+                <span className="yb-nav-ico" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </span>
+                <span className="yb-nav-lbl" style={{ marginLeft: 6 }}>Admin</span>
+              </a>
+            </div>
           </div>
         </nav>
 
@@ -820,7 +1039,7 @@ export default function YearbookApp() {
             <img src="/logomaha.png" alt="Logo 2026" className="yb-hero-logo" />
 
             <p className="yb-hero-meta">
-              <span>Vol. 01</span>
+              <span>Vol. 1</span>
               <span className="yb-hero-meta-dot" />
               <span>Mahawaluya Pangestu</span>
               <span className="yb-hero-meta-dot" />
@@ -841,11 +1060,15 @@ export default function YearbookApp() {
 
             <div className="yb-hero-scrolls">
               <a href="#kelas" className="yb-hero-scroll" aria-label="Gulir ke daftar kelas">
-                <span>Lihat Kelas</span>
+                <span>Kelas</span>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
               </a>
               <a href="#kenangan" className="yb-hero-scroll" aria-label="Gulir ke kotak kenangan">
-                <span>Lihat Sticky Memory</span>
+                <span>Sticky Memory</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+              </a>
+              <a href="#dokumentasi" className="yb-hero-scroll" aria-label="Gulir ke galeri dokumentasi">
+                <span>Dokumentasi</span>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
               </a>
             </div>
@@ -867,7 +1090,7 @@ export default function YearbookApp() {
         {/* ── Grid ────────────────────────────── */}
         <main className="yb-main" id="kelas">
           <div className="yb-section-header">
-            <span className="yb-section-index">01</span>
+            <span className="yb-section-index">1</span>
             <div className="yb-section-titles">
               <p className="yb-section-label">Pilih Kelas</p>
               <p className="yb-section-desc">{CLASSES.length} kelas &middot; ketuk untuk membuka buku</p>
@@ -899,7 +1122,11 @@ export default function YearbookApp() {
                       <div className="yb-gloss" />
                       <div className="yb-book-label">
                         <span className="yb-card-name">{cls.name}</span>
-                        <span className="yb-card-cta">↗</span>
+                        <span className="yb-card-cta" aria-hidden="true">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
+                          </svg>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -910,20 +1137,41 @@ export default function YearbookApp() {
 
         <MessageWall />
 
+        <Documentation />
+
         <footer className="yb-footer">
           <div className="yb-footer-divider" aria-hidden="true">
-            <span /><em>rey</em><span />
+            <span /><em>Reyno Nawfal Ghaisan</em><span />
           </div>
           <img src="/logomaha.png" alt="" className="yb-footer-logo" onError={e => e.target.style.display='none'} />
           <p className="yb-footer-motto">ini milik kita, untuk selamanya</p>
           <p className="yb-footer-meta">
             <span>SMKN 2 Purwakarta</span>
             <span className="yb-footer-dot" />
-            <span>Yearbook Vol. 01</span>
+            <span>Yearbook Vol. 1</span>
             <span className="yb-footer-dot" />
             <span>2026</span>
           </p>
-          <p className="yb-footer-copy">&copy; 2026 &middot; Kenangan tak pernah pudar</p>
+          <div className="yb-footer-socials">
+            <a href="https://github.com/rey-hub1" target="_blank" rel="noopener noreferrer" className="yb-footer-social-link">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+              </svg>
+              <span>rey-hub1</span>
+            </a>
+            <a href="https://www.instagram.com/reyyn23/" target="_blank" rel="noopener noreferrer" className="yb-footer-social-link">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+              </svg>
+              <span>reyyn23</span>
+            </a>
+          </div>
+          <p className="yb-footer-copy">
+            &copy; 2026 &middot; Kenangan tak pernah pudar<br/>
+            Made with <span style={{ color: "var(--yb-accent)" }}>&hearts;</span> by Reyno Nawfal Ghaisan
+          </p>
         </footer>
       </div>
 
@@ -1643,7 +1891,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   text-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 .yb-card-cta {
-  font-size: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
   color: rgba(255,255,255,0.5);
   transition: color 0.3s ease, transform 0.3s ease;
   line-height: 1;
@@ -1749,6 +1997,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 .yb-notepad-count { font-family: var(--yb-page-font); font-size: 11px; color: var(--yb-ink-faint); }
 .yb-notepad-btn {
+  display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--yb-page-font); font-size: 14px; font-weight: 700;
   letter-spacing: 0.02em; color: #fff;
   background: var(--yb-accent);
@@ -1803,7 +2052,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   border-left: 4px solid #c4923c;
   border-radius: 4px;
 }
-.yb-kenangan-warn-ic { font-size: 17px; line-height: 1.5; flex-shrink: 0; }
+.yb-kenangan-warn-ic { display: inline-flex; align-items: center; line-height: 1; flex-shrink: 0; }
 .yb-kenangan-warn p {
   margin: 0; font-family: var(--yb-page-font);
   font-size: 12.5px; line-height: 1.5; color: var(--yb-ink-mid);
@@ -1847,7 +2096,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 .yb-board {
   display: flex; flex-wrap: wrap;
   align-items: flex-start; justify-content: center;
-  gap: 16px 14px;
+  gap: 11px 9px;
 }
 .yb-board-empty {
   flex-basis: 100%; text-align: center;
@@ -1856,10 +2105,10 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 .yb-note {
   position: relative;
-  width: fit-content; min-width: 96px; max-width: 190px;
-  padding: 16px 14px 11px;
+  width: fit-content; min-width: 80px; max-width: 158px;
+  padding: 11px 11px 8px;
   transform: rotate(var(--rot, 0deg));
-  box-shadow: 2px 5px 14px rgba(60, 42, 24, 0.18);
+  box-shadow: 2px 4px 11px rgba(60, 42, 24, 0.16);
   transition: transform 0.22s ease, box-shadow 0.22s ease;
 }
 .yb-note:hover {
@@ -1869,8 +2118,8 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 /* selotip washi */
 .yb-note-tape {
-  position: absolute; top: -9px; left: 50%;
-  width: 58px; height: 19px; margin-left: -29px;
+  position: absolute; top: -7px; left: 50%;
+  width: 46px; height: 15px; margin-left: -23px;
   transform: rotate(var(--tape-rot, 0deg));
   background: rgba(255, 255, 255, 0.45);
   border-left: 1px dashed rgba(255,255,255,0.55);
@@ -1879,20 +2128,20 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   backdrop-filter: blur(1px);
 }
 .yb-note-body {
-  margin: 0 0 11px; color: #33291d;
-  font-family: var(--yb-hand-font); font-size: 16px; line-height: 1.4;
+  margin: 0 0 7px; color: #33291d;
+  font-family: var(--yb-hand-font); font-size: 14px; line-height: 1.32;
   white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
 }
 .yb-note-meta {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-  border-top: 1px dashed rgba(80, 60, 40, 0.28); padding-top: 6px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+  border-top: 1px dashed rgba(80, 60, 40, 0.28); padding-top: 4px;
 }
 .yb-note-from {
-  font-family: var(--yb-hand-font); font-size: 15px; font-weight: 700;
+  font-family: var(--yb-hand-font); font-size: 13px; font-weight: 700;
   color: var(--yb-accent);
 }
 .yb-note-time {
-  font-family: var(--yb-page-font); font-size: 8.5px; letter-spacing: 0.04em;
+  font-family: var(--yb-page-font); font-size: 8px; letter-spacing: 0.03em;
   color: rgba(80, 60, 40, 0.5); text-transform: uppercase; white-space: nowrap;
 }
 /* varian warna kertas */
@@ -2020,11 +2269,34 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   width: 3px; height: 3px; border-radius: 50%;
   background: var(--yb-accent); opacity: 0.5;
 }
+.yb-footer-socials {
+  display: flex; align-items: center; justify-content: center;
+  gap: 20px; margin-top: 10px; margin-bottom: 4px;
+}
+.yb-footer-social-link {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--yb-page-font);
+  font-size: 12px;
+  color: var(--yb-ink-mid);
+  text-decoration: none;
+  transition: all 0.25s ease;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.4);
+  border: 1px solid var(--yb-border);
+}
+.yb-footer-social-link:hover {
+  background: var(--yb-ink);
+  color: var(--yb-bg);
+  border-color: var(--yb-ink);
+  transform: translateY(-2px);
+}
 .yb-footer-copy {
   font-family: var(--yb-page-font);
-  font-size: 11px; font-style: italic;
-  color: var(--yb-ink-faint); opacity: 0.7;
-  margin-top: 6px;
+  font-size: 11.5px; font-style: italic;
+  color: var(--yb-ink-faint); opacity: 0.8;
+  margin-top: 10px;
+  line-height: 1.6;
 }
 
 /* ════════════════════════════════════════
@@ -2672,7 +2944,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   0%, 55% { transform: translateX(-120%); }
   75%, 100% { transform: translateX(120%); }
 }
-.yb-splash-btn-arrow { transition: transform 0.4s cubic-bezier(0.16,1,0.3,1); }
+.yb-splash-btn-arrow { display: inline-flex; align-items: center; transition: transform 0.4s cubic-bezier(0.16,1,0.3,1); }
 .yb-splash-btn:hover {
   background: linear-gradient(135deg, #e8c987, #c8a96e);
   color: #1a1207;
@@ -2688,5 +2960,282 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .yb-splash-mosaic, .yb-splash-title em, .yb-splash-btn::before { animation: none; }
+}
+
+/* ════════════════════════════════════════
+   SMART FEST
+   ════════════════════════════════════════ */
+.yb-sf {
+  position: relative; z-index: 1;
+  max-width: 1140px; margin: 0 auto;
+  padding: 8px 32px 90px;
+  scroll-margin-top: 80px;
+}
+
+.yb-sf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.yb-sf-card {
+  position: relative;
+  display: flex; flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px 18px 18px;
+  min-height: 150px;
+  text-align: left;
+  background: var(--yb-card-bg);
+  border: 1px solid var(--yb-border);
+  border-radius: 8px;
+  box-shadow: var(--yb-card-shadow);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s ease, border-color 0.3s ease;
+  animation: fadeUpStagger 0.5s ease backwards;
+  animation-delay: calc(var(--i) * 0.04s);
+}
+.yb-sf-card::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(150deg, rgba(184,94,69,0.06) 0%, transparent 55%);
+  opacity: 0; transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.yb-sf-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--yb-card-hover-shadow);
+  border-color: rgba(184,94,69,0.35);
+}
+.yb-sf-card:hover::before { opacity: 1; }
+.yb-sf-card:active { transform: translateY(-1px); }
+
+.yb-sf-card-icon {
+  font-size: 34px; line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(44,27,14,0.12));
+}
+
+.yb-sf-card-play {
+  position: absolute; top: 16px; right: 16px;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--yb-accent);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(184,94,69,0.35);
+  opacity: 0; transform: scale(0.7);
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.yb-sf-card-play svg { width: 13px; height: 13px; margin-left: 1px; }
+.yb-sf-card:hover .yb-sf-card-play { opacity: 1; transform: scale(1); }
+
+.yb-sf-card-name {
+  margin-top: auto;
+  font-family: var(--yb-title-font);
+  font-size: 18px; line-height: 1.2;
+  color: var(--yb-ink);
+}
+.yb-sf-card-sub {
+  font-family: var(--yb-page-font);
+  font-size: 11.5px; letter-spacing: 0.04em;
+  color: var(--yb-ink-faint);
+}
+
+.yb-sf-folder-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 28px;
+  font-family: var(--yb-page-font);
+  font-size: 13px; letter-spacing: 0.04em;
+  color: var(--yb-ink-mid);
+  text-decoration: none;
+  padding: 9px 18px;
+  border: 1px solid var(--yb-border);
+  border-radius: 22px;
+  background: rgba(255,255,255,0.3);
+  transition: all 0.25s ease;
+}
+.yb-sf-folder-link:hover {
+  background: var(--yb-ink); color: var(--yb-bg);
+  border-color: var(--yb-ink); transform: translateY(-1px);
+}
+
+/* ── modal galeri ── */
+.yb-sf-modal {
+  position: fixed; inset: 0; z-index: 100000;
+  background: rgba(20,14,8,0.78);
+  backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  animation: overlayIn 0.4s ease;
+}
+.yb-sf-modal-card {
+  position: relative;
+  width: 100%; max-width: 940px;
+  height: min(82vh, 760px);
+  display: flex; flex-direction: column;
+  background: var(--yb-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  animation: fadeUpStagger 0.45s cubic-bezier(0.16,1,0.3,1) backwards;
+}
+.yb-sf-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--yb-border);
+  background: var(--yb-bg-lt);
+  flex-shrink: 0;
+}
+.yb-sf-modal-meta { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.yb-sf-modal-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+.yb-sf-modal-title {
+  font-family: var(--yb-title-font);
+  font-size: 19px; line-height: 1.15; color: var(--yb-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.yb-sf-modal-sub {
+  font-family: var(--yb-page-font);
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--yb-ink-faint);
+}
+.yb-sf-modal-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.yb-sf-modal-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--yb-page-font);
+  font-size: 12.5px;
+  color: var(--yb-ink-mid);
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--yb-border);
+  border-radius: 20px;
+  background: rgba(255,255,255,0.35);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.yb-sf-modal-btn:hover {
+  background: var(--yb-ink); color: var(--yb-bg); border-color: var(--yb-ink);
+}
+.yb-sf-modal-close { padding: 8px; border-radius: 50%; }
+.yb-sf-modal-body { position: relative; flex: 1; background: #fff; }
+.yb-sf-iframe {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  border: 0;
+  transition: opacity 0.4s ease;
+}
+.yb-sf-modal-loading {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  font-family: var(--yb-page-font);
+  font-size: 13px; letter-spacing: 0.05em;
+  color: var(--yb-ink-faint);
+  background: var(--yb-bg-lt);
+}
+.yb-sf-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(0,0,0,0.12);
+  border-top-color: var(--yb-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@media (max-width: 560px) {
+  .yb-sf { padding: 8px 12px 70px; }
+  .yb-sf-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .yb-sf-card { min-height: 110px; padding: 10px; }
+  .yb-sf-card-icon { font-size: 24px; }
+  .yb-sf-card-name { font-size: 13px; }
+  .yb-sf-modal { padding: 0; }
+  .yb-sf-modal-card { height: 100%; max-width: none; border-radius: 0; }
+  .yb-sf-modal-title { font-size: 16px; }
+  .yb-sf-modal-btn span, .yb-sf-modal-btn { font-size: 11.5px; }
+}
+
+/* ════════════════════════════════════════
+   DOKUMENTASI (03.x) — cover kotak
+   ════════════════════════════════════════ */
+.yb-doc { padding-top: 24px; }
+
+.yb-doc-intro {
+  max-width: 1140px;
+  margin: 0 auto 8px;
+  text-align: center;
+  padding: 0 32px;
+}
+.yb-doc-intro-index {
+  display: inline-block;
+  font-size: 30px;
+  margin-bottom: 4px;
+}
+.yb-doc-intro-title {
+  font-family: var(--yb-title-font);
+  font-size: clamp(32px, 5vw, 48px);
+  line-height: 1.05;
+  color: var(--yb-ink);
+}
+.yb-doc-intro-desc {
+  font-family: var(--yb-page-font);
+  font-size: 13.5px;
+  color: var(--yb-ink-faint);
+  max-width: 540px;
+  margin: 8px auto 0;
+}
+
+.yb-doc-sub { margin-top: 56px; }
+.yb-doc-sub:first-of-type { margin-top: 40px; }
+.yb-doc-sub .yb-section-header { margin-bottom: 28px; }
+
+/* kartu dokumentasi: cover penuh di belakang, teks di atas scrim */
+.yb-doc-card {
+  min-height: 188px;
+  justify-content: flex-end;
+  padding: 16px;
+  color: #fff;
+}
+.yb-doc-card .yb-sf-card-name { color: #fff; position: relative; z-index: 2; }
+.yb-doc-card .yb-sf-card-sub { color: rgba(255,255,255,0.82); position: relative; z-index: 2; }
+.yb-doc-card:hover { transform: translateY(-5px); }
+
+.yb-doc-cover {
+  position: absolute; inset: 0;
+  z-index: 0; overflow: hidden;
+  border-radius: inherit;
+}
+.yb-doc-cover-ph {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(150deg, var(--yb-accent) 0%, #8a4632 100%);
+}
+.yb-doc-cover-icon {
+  font-size: 40px; line-height: 1;
+  opacity: 0.9;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+}
+.yb-doc-cover-spin {
+  position: absolute; bottom: 12px; right: 12px;
+  border-color: rgba(255,255,255,0.35);
+  border-top-color: #fff;
+}
+.yb-doc-cover-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.16,1,0.3,1);
+}
+.yb-doc-card:hover .yb-doc-cover-img { transform: scale(1.06); }
+.yb-doc-cover-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(20,14,8,0.05) 0%, rgba(20,14,8,0.15) 45%, rgba(20,14,8,0.78) 100%);
+}
+/* matikan gradient hover bawaan .yb-sf-card biar nggak nutup cover */
+.yb-doc-card::before { display: none; }
+
+@media (max-width: 560px) {
+  .yb-doc-card { min-height: 120px; padding: 10px; }
+  .yb-doc-card .yb-sf-card-name { font-size: 12px; }
+  .yb-doc-card .yb-sf-card-sub { font-size: 10px; }
+  .yb-doc-sub { margin-top: 36px; }
+  .yb-doc-intro { padding: 0 16px; }
 }
 `;

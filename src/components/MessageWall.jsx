@@ -78,11 +78,13 @@ export default function MessageWall() {
             .order("created_at", { ascending: false })
             .limit(100);
         if (err) {
+            console.log("[fetchMessages] ERROR:", err);
             setError("Gagal memuat pesan.");
             return false;
         }
         setError("");
         const rows = data || [];
+        console.log("[fetchMessages] rows dari DB:", rows.length);
         seenIds.current = new Set(rows.map((r) => r.id));
         setMessages(rows);
         return true;
@@ -129,9 +131,12 @@ export default function MessageWall() {
         setRefreshing(false);
     };
 
-    // realtime: pesan baru dari orang lain langsung muncul
+    // realtime: pesan baru dari orang lain langsung muncul.
+    // Fallback polling tiap 6 detik kalau realtime gagal/belum aktif —
+    // note tetap nongol tanpa refresh manual.
     useEffect(() => {
         if (!supabase) return;
+        let realtimeOk = false;
         const ch = supabase
             .channel("messages-insert")
             .on(
@@ -139,11 +144,24 @@ export default function MessageWall() {
                 { event: "INSERT", schema: "public", table: "messages" },
                 (payload) => prependOne(payload.new),
             )
-            .subscribe();
+            .subscribe((status) => {
+                // SUBSCRIBED = realtime hidup. CHANNEL_ERROR/TIMED_OUT = gagal.
+                console.log("[realtime messages]", status);
+                realtimeOk = status === "SUBSCRIBED";
+            });
+
+        // polling cadangan — cuma jalan saat tab terlihat & realtime belum OK
+        const poll = setInterval(() => {
+            if (document.visibilityState === "visible" && !realtimeOk) {
+                fetchMessages();
+            }
+        }, 6000);
+
         return () => {
+            clearInterval(poll);
             supabase.removeChannel(ch);
         };
-    }, [prependOne]);
+    }, [prependOne, fetchMessages]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -195,10 +213,16 @@ export default function MessageWall() {
         // Tunggu read-after-write: poll DB sampai note benar-benar terbaca,
         // baru loading selesai — biar user yakin note sudah masuk Supabase.
         // Tombol tetap "menempel…" selama proses ini.
-        if (data?.id) await confirmInDb(data.id);
+        console.log("[submit] POST 200, data:", data);
+        if (data?.id) {
+            const ok = await confirmInDb(data.id);
+            console.log("[submit] confirmInDb:", ok);
+        }
         // tampilkan optimistik (kalau confirm timeout) lalu replace dgn DB-truth
         if (data) prependOne(data);
-        await fetchMessages();
+        const fetched = await fetchMessages();
+        console.log("[submit] fetchMessages ok:", fetched);
+        setMessages((cur) => { console.log("[submit] messages count now:", cur.length, "ids include posted?", cur.some((m) => m.id === data?.id)); return cur; });
 
         setSending(false);
         setBody("");
@@ -216,6 +240,7 @@ export default function MessageWall() {
     return (
         <section id="kenangan" className="yb-kenangan">
             <div className="yb-kenangan-head">
+                <span className="yb-section-index" style={{ display: 'block', opacity: 0.8, marginBottom: 12 }}>2</span>
                 <span className="yb-kenangan-kicker">tempel kenanganmu</span>
                 <h2 className="yb-kenangan-title">Sticky Memory</h2>
                 <p className="yb-kenangan-sub">
@@ -303,12 +328,33 @@ export default function MessageWall() {
                             type="submit"
                             disabled={sending || !body.trim()}
                         >
-                            {sending ? "menempel…" : justSent ? "Tertempel ✓" : "Tempel ✎"}
+                            {sending ? (
+                                "menempel…"
+                            ) : justSent ? (
+                                <>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                        <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                    Tertempel
+                                </>
+                            ) : (
+                                <>
+                                    Tempel
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                        <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                    </svg>
+                                </>
+                            )}
                         </button>
                     </div>
                     {error && <p className="yb-notepad-error">{error}</p>}
                     {justSent && !error && (
-                        <p className="yb-notepad-ok">Tersimpan di papan. Lihat di bawah ↓</p>
+                        <p className="yb-notepad-ok">
+                            Tersimpan di papan. Lihat di bawah
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: "-2px", marginLeft: 4 }}>
+                                <line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" />
+                            </svg>
+                        </p>
                     )}
                 </div>
             </form>
@@ -316,7 +362,10 @@ export default function MessageWall() {
             {/* peringatan penyalahgunaan */}
             <div className="yb-kenangan-warn" role="note">
                 <span className="yb-kenangan-warn-ic" aria-hidden="true">
-                    ⚠
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                        <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
                 </span>
                 <p>
                     <b>Publik & anonim.</b> Dilarang catat nama orang lain atau tulis hal menyinggung/SARA. Pesan melanggar bisa dihapus. ~rey
@@ -364,7 +413,9 @@ export default function MessageWall() {
                                         onClick={() => setQuery("")}
                                         aria-label="Hapus pencarian"
                                     >
-                                        ✕
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
                                     </button>
                                 )}
                             </div>
@@ -427,7 +478,10 @@ export default function MessageWall() {
                         <p className="yb-board-empty">Memuat papan…</p>
                     ) : (
                         <p className="yb-board-empty">
-                            Papan masih kosong. Jadi note pertama ✦
+                            Papan masih kosong. Jadi note pertama
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: "-2px", marginLeft: 5 }}>
+                                <path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4" />
+                            </svg>
                         </p>
                     )}
                 </div>

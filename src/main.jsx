@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import Lenis from 'lenis';
 import YearbookApp from './components/YearbookFlipbook';
-import AdminNotes from './components/AdminNotes';
+import AdminHub from './components/AdminHub';
+import NotFound from './components/NotFound';
 import './index.css';
 
 const lenis = new Lenis({
@@ -17,19 +18,39 @@ function raf(time) {
 }
 requestAnimationFrame(raf);
 
-// router minimal berbasis hash — #admin-notes → halaman admin hapus note
+// router minimal berbasis hash — #admin (alias #admin-notes) atau path /admin → hub admin
 function Root() {
-  const [route, setRoute] = useState(() => window.location.hash);
+  const [routeHash, setRouteHash] = useState(() => window.location.hash);
+  const [routePath, setRoutePath] = useState(() => window.location.pathname);
+  
   useEffect(() => {
-    const onChange = () => setRoute(window.location.hash);
-    window.addEventListener('hashchange', onChange);
-    return () => window.removeEventListener('hashchange', onChange);
+    const onHashChange = () => setRouteHash(window.location.hash);
+    window.addEventListener('hashchange', onHashChange);
+    
+    // Support history API pushState routing if needed
+    const onPopState = () => {
+      setRouteHash(window.location.hash);
+      setRoutePath(window.location.pathname);
+    };
+    window.addEventListener('popstate', onPopState);
+    
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      window.removeEventListener('popstate', onPopState);
+    };
   }, []);
 
-  if (route === '#admin-notes') {
-    const goBack = () => { window.location.hash = ''; };
-    return <AdminNotes onBack={goBack} />;
+  const isAdmin = routeHash === '#admin' || routeHash === '#admin-notes' || routePath === '/admin';
+  const isHome = routePath === '/' || routePath === '/index.html' || routePath === '';
+
+  if (isAdmin) {
+    return <AdminHub />;
   }
+  
+  if (!isHome) {
+    return <NotFound />;
+  }
+
   return <YearbookApp />;
 }
 

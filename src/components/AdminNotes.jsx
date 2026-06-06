@@ -1,24 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { supabase, DELETE_MESSAGE_URL, POST_MESSAGE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
+import { supabase, POST_MESSAGE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
+import { callAdmin, TOKEN_KEY, FONTS } from "../lib/adminShared";
+import AdminGate from "./AdminGate";
 
-const TOKEN_KEY = "yb-admin-token";
 const MAX_LEN = 80;
 const NOTE_COLORS = ["#fef3c0","#fcded0","#d7eed9","#fbd6e2","#d6e6f4","#ece2f7"];
-
-async function callAdmin(token, payload) {
-    if (!DELETE_MESSAGE_URL) return { ok: false, status: 0, data: {} };
-    try {
-        const res = await fetch(DELETE_MESSAGE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-admin-token": token },
-            body: JSON.stringify(payload),
-        });
-        const data = await res.json().catch(() => ({}));
-        return { ok: res.status === 200, status: res.status, data };
-    } catch {
-        return { ok: false, status: 0, data: { error: "Gagal terhubung ke server." } };
-    }
-}
 
 function fmt(iso) {
     return new Date(iso).toLocaleString("id-ID", {
@@ -27,200 +13,8 @@ function fmt(iso) {
     });
 }
 
-// ── FONTS ──────────────────────────────────────────────────────────────────
-const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
-* { box-sizing: border-box; }
-::selection { background: #c8a44a33; color: #e8e2d2; }
-::-webkit-scrollbar { width: 6px; background: #07070a; }
-::-webkit-scrollbar-thumb { background: #1e1e2a; border-radius: 3px; }
-@keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-@keyframes pulse { 0%,100% { opacity:.4; } 50% { opacity:.9; } }
-.yn-row { animation: fadeUp .28s ease both; }
-.yn-row:nth-child(1) { animation-delay:.03s }
-.yn-row:nth-child(2) { animation-delay:.06s }
-.yn-row:nth-child(3) { animation-delay:.09s }
-.yn-row:nth-child(4) { animation-delay:.12s }
-.yn-row:nth-child(5) { animation-delay:.15s }
-.yn-row:nth-child(6) { animation-delay:.18s }
-.yn-row:nth-child(7) { animation-delay:.21s }
-.yn-row:nth-child(8) { animation-delay:.24s }
-.yn-row:nth-child(n+9) { animation-delay:.27s }
-.yn-btn:hover { opacity: .8; }
-.yn-btn:active { transform: scale(.97); }
-.yn-gate-card { animation: fadeUp .4s ease both; }
-`;
-
-// ── GATE (LOGIN) ───────────────────────────────────────────────────────────
-function Gate({ onAuth }) {
-    const [val, setVal] = useState("");
-    const [err, setErr] = useState("");
-    const [busy, setBusy] = useState(false);
-
-    const submit = async (e) => {
-        e.preventDefault();
-        const t = val.trim();
-        if (!t) return;
-        setBusy(true); setErr("");
-        const { ok, status } = await callAdmin(t, { verify: true });
-        setBusy(false);
-        if (!ok) {
-            setErr(status === 0 ? "Tidak dapat terhubung ke server." : "Token tidak valid.");
-            return;
-        }
-        sessionStorage.setItem(TOKEN_KEY, t);
-        onAuth(t);
-    };
-
-    return (
-        <div style={G.bg}>
-            <style>{FONTS}</style>
-            <div className="yn-gate-card" style={G.card}>
-                {/* ornamen */}
-                <div style={G.topBar} />
-                <div style={G.lockWrap}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#c8a44a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="11" width="18" height="11" rx="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                </div>
-                <p style={G.kicker}>RESTRICTED ACCESS</p>
-                <h1 style={G.title}>Admin Panel</h1>
-                <p style={G.sub}>Sticky Memory · Yearbook 2025</p>
-                <form onSubmit={submit} style={G.form}>
-                    <label style={G.label}>Admin Token</label>
-                    <input
-                        style={{ ...G.input, borderColor: err ? "#d95f5f" : "#1e1e2a" }}
-                        type="password"
-                        value={val}
-                        onChange={e => setVal(e.target.value)}
-                        placeholder="enter token…"
-                        autoFocus
-                        autoComplete="off"
-                    />
-                    {err && <p style={G.err}>{err}</p>}
-                    <button
-                        className="yn-btn"
-                        style={{ ...G.submit, opacity: busy ? .6 : 1 }}
-                        type="submit"
-                        disabled={busy}
-                    >
-                        {busy ? (
-                            <span style={{ animation: "pulse 1s infinite" }}>memverifikasi…</span>
-                        ) : "Masuk →"}
-                    </button>
-                </form>
-                <div style={G.rule} />
-                <button className="yn-btn" style={G.back} onClick={() => { window.location.hash = ""; }}>
-                    ← kembali ke situs
-                </button>
-            </div>
-        </div>
-    );
-}
-
-const G = {
-    bg: {
-        minHeight: "100vh",
-        background: "#07070a",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px 16px",
-        fontFamily: "'JetBrains Mono', monospace",
-    },
-    card: {
-        width: "100%",
-        maxWidth: 380,
-        background: "#111118",
-        border: "1px solid #2a2a38",
-        borderRadius: 4,
-        padding: "36px 32px 28px",
-        position: "relative",
-        overflow: "hidden",
-    },
-    topBar: {
-        position: "absolute",
-        top: 0, left: 0, right: 0,
-        height: 3,
-        background: "linear-gradient(90deg, #c8a44a 0%, #e8c97a 50%, #c8a44a 100%)",
-    },
-    lockWrap: {
-        width: 52, height: 52,
-        borderRadius: "50%",
-        border: "1px solid #c8a44a50",
-        background: "#c8a44a18",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        marginBottom: 20,
-    },
-    kicker: {
-        margin: "0 0 8px",
-        fontSize: 9,
-        letterSpacing: "0.25em",
-        color: "#c8a44a",
-        fontWeight: 500,
-    },
-    title: {
-        margin: "0 0 4px",
-        fontFamily: "'Playfair Display', serif",
-        fontSize: 28,
-        fontWeight: 700,
-        color: "#f0ece0",
-        letterSpacing: "-.02em",
-    },
-    sub: {
-        margin: "0 0 28px",
-        fontSize: 11,
-        color: "#7a7a96",
-    },
-    form: { display: "flex", flexDirection: "column", gap: 10 },
-    label: { fontSize: 10, letterSpacing: ".15em", color: "#9090aa", marginBottom: -4 },
-    input: {
-        width: "100%",
-        padding: "11px 14px",
-        border: "1px solid #2a2a38",
-        borderRadius: 3,
-        background: "#07070a",
-        color: "#f0ece0",
-        fontSize: 13,
-        fontFamily: "'JetBrains Mono', monospace",
-        outline: "none",
-        letterSpacing: ".05em",
-        transition: "border-color .15s",
-    },
-    err: { margin: 0, fontSize: 12, color: "#e06060" },
-    submit: {
-        marginTop: 6,
-        padding: "12px 0",
-        border: "none",
-        borderRadius: 3,
-        background: "#c8a44a",
-        color: "#07070a",
-        fontSize: 13,
-        fontWeight: 500,
-        fontFamily: "'JetBrains Mono', monospace",
-        cursor: "pointer",
-        letterSpacing: ".08em",
-        transition: "opacity .15s, transform .1s",
-    },
-    rule: { margin: "24px 0 18px", borderTop: "1px solid #2a2a38" },
-    back: {
-        display: "block",
-        width: "100%",
-        padding: "8px 0",
-        border: "none",
-        background: "none",
-        color: "#7a7a96",
-        fontSize: 11,
-        fontFamily: "'JetBrains Mono', monospace",
-        cursor: "pointer",
-        letterSpacing: ".05em",
-        textAlign: "center",
-        transition: "opacity .15s, transform .1s",
-    },
-};
-
 // ── NOTE ROW ───────────────────────────────────────────────────────────────
-function NoteRow({ m, index, token, onDelete, onEdit }) {
+function NoteRow({ m, index, token, onDelete, onEdit, selected, onToggleSelect }) {
     const [editMode, setEditMode] = useState(false);
     const [editVal, setEditVal] = useState(m.body);
     const [saving, setSaving] = useState(false);
@@ -258,9 +52,19 @@ function NoteRow({ m, index, token, onDelete, onEdit }) {
     };
 
     return (
-        <article className="yn-row" style={R.row}>
+        <article className="yn-row" style={{ ...R.row, ...(selected ? R.rowSelected : null) }}>
             {/* strip warna kiri */}
             <div style={{ ...R.strip, background: color }} />
+
+            {/* checkbox pilih */}
+            <label style={R.checkWrap} title="Pilih note">
+                <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => onToggleSelect(m.id)}
+                    style={R.check}
+                />
+            </label>
 
             {/* nomor baris */}
             <span style={R.num}>{String(index + 1).padStart(2, "0")}</span>
@@ -327,6 +131,12 @@ const R = {
         transition: "border-color .15s",
     },
     strip: { width: 4, flexShrink: 0, alignSelf: "stretch", minHeight: 54 },
+    rowSelected: { borderColor: "#c8a44a", background: "#16140d" },
+    checkWrap: {
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "0 6px 0 12px", flexShrink: 0, alignSelf: "stretch", cursor: "pointer",
+    },
+    check: { width: 15, height: 15, accentColor: "#c8a44a", cursor: "pointer" },
     num: {
         fontFamily: "'JetBrains Mono', monospace",
         fontSize: 10,
@@ -491,7 +301,7 @@ function DiagPanel() {
         <section style={DX.wrap}>
             <div style={DX.head}>
                 <span style={DX.badge}>DIAGNOSTIK</span>
-                <span style={DX.headSub}>uji nempel note → status mentah</span>
+                <span style={DX.headSub}>uji nempel note · status mentah</span>
             </div>
 
             <div style={DX.kv}><span style={DX.k}>POST URL</span><span style={DX.v}>{POST_MESSAGE_URL || "(kosong)"}</span></div>
@@ -499,7 +309,9 @@ function DiagPanel() {
             <div style={DX.kv}><span style={DX.k}>Jenis key</span><span style={{ ...DX.v, color: key.startsWith("eyJ") ? "#6fcf97" : "#e0a060" }}>{keyKind}</span></div>
 
             <button className="yn-btn" style={{ ...DX.btn, opacity: busy ? .6 : 1 }} onClick={ping} disabled={busy}>
-                {busy ? "mengirim…" : "▶ Kirim test note"}
+                {busy ? "mengirim…" : (
+                    <><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ verticalAlign: "-1px", marginRight: 6 }}><polygon points="5 3 19 12 5 21 5 3" /></svg>Kirim test note</>
+                )}
             </button>
 
             {res && (
@@ -579,13 +391,16 @@ const DX = {
 };
 
 // ── DASHBOARD ──────────────────────────────────────────────────────────────
-export default function AdminNotes({ onBack }) {
-    const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || "");
-    const [authed, setAuthed] = useState(() => !!sessionStorage.getItem(TOKEN_KEY));
+export default function AdminNotes({ token: tokenProp, embedded = false }) {
+    // embedded = dipakai di dalam AdminHub (login dikelola hub). Standalone = pakai Gate sendiri.
+    const [token, setToken] = useState(() => tokenProp || sessionStorage.getItem(TOKEN_KEY) || "");
+    const [authed, setAuthed] = useState(() => embedded || !!sessionStorage.getItem(TOKEN_KEY));
     const [messages, setMessages] = useState([]);
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [globalErr, setGlobalErr] = useState("");
+    const [selected, setSelected] = useState(() => new Set());
+    const [bulkBusy, setBulkBusy] = useState(false);
 
     const fetchAll = useCallback(async () => {
         if (!supabase) { setGlobalErr("Supabase belum dikonfigurasi."); setLoading(false); return; }
@@ -617,7 +432,45 @@ export default function AdminNotes({ onBack }) {
         setMessages(prev => prev.map(m => m.id === id ? { ...m, body: newBody } : m));
     };
 
-    if (!authed) return <Gate onAuth={handleAuth} />;
+    const toggleSelect = (id) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+    const selectAll = (list) => setSelected(new Set(list.map(m => m.id)));
+    const clearSelection = () => setSelected(new Set());
+
+    // hapus massal — edge function 1 id per panggilan, jadi loop sekuensial.
+    // baris yg sukses dibuang dari state; 401 = token kadaluarsa → logout.
+    const bulkDelete = async () => {
+        const ids = [...selected];
+        if (ids.length === 0 || bulkBusy) return;
+        if (!window.confirm(`Hapus ${ids.length} note terpilih permanen? Tindakan ini tidak bisa dibatalkan.`)) return;
+        setBulkBusy(true);
+        const okIds = [];
+        let unauthorized = false;
+        for (const id of ids) {
+            const { ok, status } = await callAdmin(token, { id });
+            if (ok) okIds.push(id);
+            else if (status === 401) { unauthorized = true; break; }
+        }
+        setBulkBusy(false);
+        if (okIds.length) {
+            setMessages(prev => prev.filter(m => !okIds.includes(m.id)));
+            setSelected(prev => {
+                const next = new Set(prev);
+                okIds.forEach(id => next.delete(id));
+                return next;
+            });
+        }
+        if (unauthorized) { handleLogout(); return; }
+        const failed = ids.length - okIds.length;
+        if (failed > 0) setGlobalErr(`${okIds.length} terhapus, ${failed} gagal. Coba lagi.`);
+    };
+
+    if (!authed) return <AdminGate onAuth={handleAuth} />;
 
     const q = query.trim().toLowerCase();
     const shown = q
@@ -638,9 +491,19 @@ export default function AdminNotes({ onBack }) {
                     <p style={D.sub}>Yearbook 2025 · {messages.length} note tersimpan</p>
                 </div>
                 <nav style={D.nav}>
-                    <button className="yn-btn" style={D.navBtn} onClick={fetchAll}>↻ Refresh</button>
-                    <button className="yn-btn" style={D.navBtn} onClick={() => { window.location.hash = ""; }}>← Situs</button>
-                    <button className="yn-btn" style={{ ...D.navBtn, color: "#d95f5f", borderColor: "#d95f5f28" }} onClick={handleLogout}>Keluar</button>
+                    <button className="yn-btn" style={D.navBtn} onClick={fetchAll}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-2px", marginRight: 5 }}><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
+                        Refresh
+                    </button>
+                    {!embedded && (
+                        <>
+                            <button className="yn-btn" style={D.navBtn} onClick={() => { window.location.hash = ""; }}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-2px", marginRight: 5 }}><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
+                                Situs
+                            </button>
+                            <button className="yn-btn" style={{ ...D.navBtn, color: "#d95f5f", borderColor: "#d95f5f28" }} onClick={handleLogout}>Keluar</button>
+                        </>
+                    )}
                 </nav>
             </header>
 
@@ -663,7 +526,9 @@ export default function AdminNotes({ onBack }) {
                     placeholder="cari isi atau nama pembuat…"
                 />
                 {query && (
-                    <button className="yn-btn" style={D.searchClear} onClick={() => setQuery("")}>✕</button>
+                    <button className="yn-btn" style={D.searchClear} onClick={() => setQuery("")} aria-label="Hapus pencarian">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    </button>
                 )}
             </div>
 
@@ -676,6 +541,35 @@ export default function AdminNotes({ onBack }) {
             )}
 
             {globalErr && <div style={D.errBanner}>{globalErr}</div>}
+
+            {/* ── bulk action bar ── */}
+            {!loading && shown.length > 0 && (
+                <div style={D.bulkBar}>
+                    <label style={D.bulkAll}>
+                        <input
+                            type="checkbox"
+                            checked={shown.length > 0 && shown.every(m => selected.has(m.id))}
+                            ref={el => { if (el) el.indeterminate = selected.size > 0 && !shown.every(m => selected.has(m.id)); }}
+                            onChange={e => e.target.checked ? selectAll(shown) : clearSelection()}
+                            style={{ width: 15, height: 15, accentColor: "#c8a44a", cursor: "pointer" }}
+                        />
+                        <span>{selected.size > 0 ? `${selected.size} dipilih` : "Pilih semua"}</span>
+                    </label>
+                    {selected.size > 0 && (
+                        <div style={{ display: "flex", gap: 8 }}>
+                            <button className="yn-btn" style={D.bulkCancel} onClick={clearSelection} disabled={bulkBusy}>Batal</button>
+                            <button
+                                className="yn-btn"
+                                style={{ ...D.bulkDel, opacity: bulkBusy ? .6 : 1 }}
+                                onClick={bulkDelete}
+                                disabled={bulkBusy}
+                            >
+                                {bulkBusy ? "menghapus…" : `Hapus ${selected.size} terpilih`}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* ── list ── */}
             {loading ? (
@@ -694,6 +588,8 @@ export default function AdminNotes({ onBack }) {
                             token={token}
                             onDelete={handleDelete}
                             onEdit={handleEdit}
+                            selected={selected.has(m.id)}
+                            onToggleSelect={toggleSelect}
                         />
                     ))}
                 </div>
@@ -815,6 +711,49 @@ const D = {
         color: "#e06060",
         fontSize: 12,
         fontFamily: "'JetBrains Mono', monospace",
+    },
+    bulkBar: {
+        maxWidth: 860,
+        margin: "0 auto 12px",
+        padding: "10px 24px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap",
+    },
+    bulkAll: {
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        fontSize: 12,
+        color: "#9090aa",
+        cursor: "pointer",
+        userSelect: "none",
+    },
+    bulkCancel: {
+        padding: "7px 14px",
+        border: "1px solid #2a2a38",
+        borderRadius: 2,
+        background: "transparent",
+        color: "#9090aa",
+        fontSize: 11,
+        fontFamily: "'JetBrains Mono', monospace",
+        cursor: "pointer",
+        transition: "opacity .15s, transform .1s",
+    },
+    bulkDel: {
+        padding: "7px 16px",
+        border: "1px solid #e0606050",
+        borderRadius: 2,
+        background: "#e0606018",
+        color: "#e06060",
+        fontSize: 11,
+        fontWeight: 500,
+        fontFamily: "'JetBrains Mono', monospace",
+        cursor: "pointer",
+        letterSpacing: ".04em",
+        transition: "opacity .15s, transform .1s",
     },
     list: {
         maxWidth: 860,
