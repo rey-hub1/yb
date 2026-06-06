@@ -5,6 +5,8 @@ import { fetchFolderFiles, FOLDER_ID_RE } from './api/drive-folder.js';
 // Dev-only: tiru serverless /api/drive-folder di Vite dev server, karena Vite
 // tidak menjalankan folder /api (itu cuma di Vercel). Tanpa ini galeri
 // "Gagal memuat galeri" pas `npm run dev`. Logika dishare dgn fungsi serverless.
+// CATATAN: kalau api/drive-folder.js diedit, RESTART `npm run dev` (import
+// di-resolve sekali saat startup).
 function devDriveFolderApi() {
   return {
     name: 'dev-drive-folder-api',
