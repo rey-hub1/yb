@@ -782,13 +782,29 @@ function DocCover({ box, override }) {
     : "";
   const showImg = src && !failed;
 
+  // lanjut ke percobaan berikutnya, atau nyerah ke icon kalau kuota habis
+  const advance = () => {
+    clearTimeout(timerRef.current);
+    setLoaded(false);
+    if (attempt < DOC_COVER_RETRIES) setAttempt((a) => a + 1);
+    else setFailed(true);
+  };
+
+  // hang-detector: di koneksi ngelag, <img> sering nggantung — onLoad maupun
+  // onError nggak nembak sama sekali → retry nggak jalan. Timeout per percobaan:
+  // kalau belum load dalam 5 dtk, paksa coba lagi (cache-bust).
+  useEffect(() => {
+    if (!showImg || loaded) return;
+    timerRef.current = setTimeout(advance, 5000);
+    return () => clearTimeout(timerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, loaded, showImg, attempt]);
+
+  // gagal cepat (404/abort) → coba lagi dengan jeda backoff kecil
   const handleError = () => {
-    if (attempt < DOC_COVER_RETRIES) {
-      setLoaded(false);
-      timerRef.current = setTimeout(() => setAttempt((a) => a + 1), 700 * (attempt + 1));
-    } else {
-      setFailed(true);
-    }
+    clearTimeout(timerRef.current);
+    if (attempt < DOC_COVER_RETRIES) timerRef.current = setTimeout(advance, 600 * (attempt + 1));
+    else setFailed(true);
   };
 
   return (
