@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { DOC_SECTIONS, DOC_COVER_KEY, driveThumb, parseDriveId } from "../data/documentation";
+import { supabase, SET_COVER_URL } from "../lib/supabase";
+import { callSetCover } from "../lib/adminShared";
 
-// Atur cover kotak Dokumentasi. Override disimpan di localStorage (browser ini saja).
+// Atur cover kotak Dokumentasi. Draft diedit lokal (preview instan + cache localStorage),
+// lalu di-push ke Supabase lewat tombol "Push ke Supabase" supaya global ke semua pengunjung.
 // Kalau kosong → frontend pilih foto acak dari covers[] folder.
 
 function loadCovers() {
@@ -19,7 +22,7 @@ function overrideToUrl(val) {
     return driveThumb(val);
 }
 
-function CoverRow({ box, value, onSave, onReset }) {
+function CoverRow({ box, value, isDirty, onSave, onReset }) {
     const [input, setInput] = useState("");
     const [preview, setPreview] = useState(() => {
         if (value) return overrideToUrl(value);
@@ -50,12 +53,13 @@ function CoverRow({ box, value, onSave, onReset }) {
         setInput("");
     };
 
-    // acak preview dari pool (cuma tampilan, tidak menyimpan)
+    // acak: pilih 1 foto dari pool → langsung jadi draft cover (ke-save lokal).
+    // Tinggal Push biar masuk Supabase global. Preview ikut update via efek `value`.
     const shuffle = () => {
         if (!box.covers?.length) return;
         const pick = box.covers[Math.floor(Math.random() * box.covers.length)];
         setImgFail(false);
-        setPreview(driveThumb(pick));
+        onSave(box.id, pick);
     };
 
     return (
@@ -81,6 +85,7 @@ function CoverRow({ box, value, onSave, onReset }) {
             <div style={P.main}>
                 <div style={P.head}>
                     <span style={P.name}>{box.name}</span>
+                    {isDirty && <span style={P.draftBadge}>draft · belum di-push</span>}
                     <a
                         href={`https://drive.google.com/drive/folders/${box.id}`}
                         target="_blank" rel="noopener noreferrer"
@@ -112,27 +117,91 @@ function CoverRow({ box, value, onSave, onReset }) {
     );
 }
 
-export default function AdminPDD() {
-    const [covers, setCovers] = useState(loadCovers);
+export default function AdminPDD({ token }) {
+    // server = source-of-truth yang sekarang ada di Supabase { boxId: fileId }.
+    // local = draft yang diedit admin { boxId: fileId } (cache di localStorage).
+    const [server, setServer] = useState({});
+    const [local, setLocal] = useState(loadCovers);
+    const [status, setStatus] = useState({ kind: "idle", msg: "" }); // idle | sending | ok | err
+
+    // Muat source-of-truth dari Supabase. Setelah push + reload, tidak ada yang dirty.
+    // Kalau supabase null → fallback localStorage (server kosong, local dari cache).
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            if (!supabase) return; // local sudah dari loadCovers(), server tetap {}
+            const { data, error } = await supabase.from("doc_covers").select("box_id, file_id");
+            if (cancelled || error || !data) return;
+            const map = {};
+            for (const row of data) {
+                if (row.box_id && row.file_id) map[row.box_id] = row.file_id;
+            }
+            setServer(map);
+            setLocal(map);
+            saveCovers(map); // cache buat offline fallback
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
     const handleSave = useCallback((boxId, val) => {
-        setCovers(prev => {
+        setLocal(prev => {
             const next = { ...prev, [boxId]: val };
             saveCovers(next);
             return next;
         });
+        setStatus({ kind: "idle", msg: "" });
     }, []);
 
     const handleReset = useCallback((boxId) => {
-        setCovers(prev => {
+        setLocal(prev => {
             const next = { ...prev };
             delete next[boxId];
             saveCovers(next);
             return next;
         });
+        setStatus({ kind: "idle", msg: "" });
     }, []);
 
-    const totalSet = Object.keys(covers).length;
+    // box dirty = nilai draft beda dari yang tersimpan di server (set baru / reset / ganti)
+    const isDirty = (id) => (local[id] || "") !== (server[id] || "");
+
+    // kumpulkan id yang berubah dari semua section
+    const allBoxIds = DOC_SECTIONS.flatMap(s => s.boxes.map(b => b.id));
+    const dirtyIds = allBoxIds.filter(isDirty);
+    const dirtyCount = dirtyIds.length;
+    const serverCount = Object.keys(server).length;
+
+    const canPush = dirtyCount > 0 && !!supabase && !!SET_COVER_URL && status.kind !== "sending";
+
+    const handlePush = useCallback(async () => {
+        // upserts = punya nilai di local & beda dari server
+        const upserts = dirtyIds
+            .filter(id => (local[id] || "") !== "")
+            .map(id => ({ box_id: id, file_id: local[id] }));
+        // deletes = ada di server tapi kosong/hilang di local
+        const deletes = dirtyIds.filter(id => (local[id] || "") === "" && (server[id] || "") !== "");
+
+        setStatus({ kind: "sending", msg: "mengirim…" });
+
+        if (upserts.length) {
+            const { ok, data } = await callSetCover(token, { items: upserts });
+            if (!ok) {
+                setStatus({ kind: "err", msg: data?.error || "Gagal push upsert." });
+                return;
+            }
+        }
+        for (const id of deletes) {
+            const { ok, data } = await callSetCover(token, { box_id: id, action: "delete" });
+            if (!ok) {
+                setStatus({ kind: "err", msg: data?.error || `Gagal hapus cover ${id}.` });
+                return;
+            }
+        }
+
+        // sukses penuh → server menyusul local, badge dirty hilang
+        setServer({ ...local });
+        setStatus({ kind: "ok", msg: "berhasil di-push ke Supabase." });
+    }, [dirtyIds, local, server, token]);
 
     return (
         <div style={P.wrap}>
@@ -140,13 +209,37 @@ export default function AdminPDD() {
                 <div>
                     <p style={P.kicker}>ADMIN · COVER PDD</p>
                     <h1 style={P.title}>Cover Dokumentasi</h1>
-                    <p style={P.sub}>{totalSet} cover diset · sisanya acak dari folder</p>
+                    <p style={P.sub}>{serverCount} cover live · {dirtyCount} draft belum di-push</p>
+                </div>
+                <div style={P.pushWrap}>
+                    <button
+                        className="yn-btn"
+                        style={{ ...P.btnPush, opacity: canPush ? 1 : .45, cursor: canPush ? "pointer" : "not-allowed" }}
+                        onClick={handlePush}
+                        disabled={!canPush}
+                    >
+                        {status.kind === "sending" ? "mengirim…" : `Push ke Supabase${dirtyCount ? ` (${dirtyCount})` : ""}`}
+                    </button>
+                    {status.kind !== "idle" && status.kind !== "sending" && (
+                        <span style={{ ...P.pushStatus, color: status.kind === "ok" ? "#6fcf97" : "#e06060" }}>
+                            {status.msg}
+                        </span>
+                    )}
                 </div>
             </header>
 
             <div style={P.note}>
-                Cover tersimpan di <b>browser ini saja</b> (localStorage). Pengunjung lain tetap melihat
-                foto acak. Tempel link/ID gambar Drive (file harus public) lalu Simpan.
+                {supabase ? (
+                    <>
+                        Edit di sini = <b>draft / preview lokal</b> (browser ini). Klik <b>Push ke Supabase</b>
+                        {" "}untuk publish ke semua pengunjung. Tempel link/ID gambar Drive (file harus public) lalu Simpan.
+                    </>
+                ) : (
+                    <>
+                        Supabase <b>belum dikonfigurasi</b> — hanya preview lokal yang jalan, perubahan tidak bisa
+                        di-push ke global. Tempel link/ID gambar Drive (file harus public) lalu Simpan.
+                    </>
+                )}
             </div>
 
             {DOC_SECTIONS.map(section => (
@@ -161,7 +254,8 @@ export default function AdminPDD() {
                             <CoverRow
                                 key={box.id}
                                 box={box}
-                                value={covers[box.id]}
+                                value={local[box.id]}
+                                isDirty={isDirty(box.id)}
                                 onSave={handleSave}
                                 onReset={handleReset}
                             />
@@ -175,7 +269,15 @@ export default function AdminPDD() {
 
 const P = {
     wrap: { maxWidth: 860, margin: "0 auto", padding: "32px 24px 80px" },
-    pageHead: { marginBottom: 18 },
+    pageHead: { marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" },
+    pushWrap: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, paddingBottom: 2 },
+    btnPush: {
+        padding: "9px 16px", border: "none", borderRadius: 3,
+        background: "#c8a44a", color: "#07070a", fontSize: 11, fontWeight: 500,
+        fontFamily: "'JetBrains Mono', monospace", letterSpacing: ".04em",
+        transition: "opacity .15s, transform .1s",
+    },
+    pushStatus: { fontSize: 10, fontFamily: "'JetBrains Mono', monospace", letterSpacing: ".03em" },
     kicker: { margin: "0 0 10px", fontSize: 9, letterSpacing: ".28em", color: "#c8a44a", fontWeight: 500 },
     title: { margin: "0 0 6px", fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, color: "#f0ece0", letterSpacing: "-.02em" },
     sub: { margin: 0, fontSize: 11, color: "#70708a" },
@@ -211,6 +313,12 @@ const P = {
     main: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 },
     head: { display: "flex", alignItems: "center", gap: 10 },
     name: { fontFamily: "'Playfair Display', serif", fontSize: 15, color: "#eae6da" },
+    draftBadge: {
+        fontSize: 8, letterSpacing: ".1em", textTransform: "uppercase",
+        padding: "2px 7px", borderRadius: 2, flexShrink: 0,
+        background: "#c8a44a1a", border: "1px solid #c8a44a55", color: "#e0c060",
+        fontFamily: "'JetBrains Mono', monospace",
+    },
     folderLink: { fontSize: 10, color: "#7a7a96", textDecoration: "none", letterSpacing: ".03em" },
     meta: { fontSize: 10.5, color: "#70708a" },
     controls: { display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" },

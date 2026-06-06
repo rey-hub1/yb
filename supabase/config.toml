@@ -5,3 +5,9 @@ project_id = "xukiivqxugrjugngkmex"
 # bisa lewat. delete-message TETAP verify_jwt default (jalur admin).
 [functions.post-message]
 verify_jwt = false
+
+# set-cover = jalur admin, auth lewat x-admin-token sendiri (timing-safe) + service
+# role. Gateway JWT dimatikan supaya publishable key (sb_publishable_…) bisa lewat,
+# konsisten dgn post-message.
+[functions.set-cover]
+verify_jwt = false

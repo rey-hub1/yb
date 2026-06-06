@@ -6,6 +6,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 
 import { CLASSES } from "../data/classes";
 import { DOC_SECTIONS, DOC_COVER_KEY, driveThumb } from "../data/documentation";
+import { supabase } from "../lib/supabase";
 import MessageWall from "./MessageWall";
 import {
   buildPalette,
@@ -393,7 +394,7 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
       {/* Header */}
       <div className="yb-viewer-header">
         <div className="yb-viewer-meta">
-          <span className="yb-viewer-eyebrow">Yearbook 2023–2026</span>
+          <span className="yb-viewer-eyebrow">Mahawaluya Pangestu</span>
           <h2 className="yb-viewer-title">Kelas {classData.name}</h2>
         </div>
         <div className="yb-viewer-actions">
@@ -721,10 +722,10 @@ function SplashScreen({ onEnter }) {
           2023 &mdash; 2026
           <span className="yb-splash-eyebrow-rule" />
         </p>
-        <h1 className="yb-splash-title" style={{ "--d": "0.34s" }}>Year<em>book</em></h1>
+        <h1 className="yb-splash-title" style={{ "--d": "0.34s" }}><span style={{ fontSize: '0.65em' }}>Mahawaluya Pangestu</span></h1>
         <p className="yb-splash-sub" style={{ "--d": "0.5s" }}>ini milik kita, untuk selamanya</p>
         <button className="yb-splash-btn yb-splash-btn--ready" style={{ "--d": "0.64s" }} onClick={handleEnter}>
-          <span>Buka Yearbook</span>
+          <span>Buka Buku</span>
           <span className="yb-splash-btn-arrow" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
@@ -905,7 +906,25 @@ function DocSection({ section, overrides, onOpen }) {
 
 function Documentation() {
   const [open, setOpen] = useState(null);
-  const [overrides] = useState(readCoverOverrides);
+  // mulai dari localStorage biar cover langsung tampil / fallback saat offline
+  const [overrides, setOverrides] = useState(readCoverOverrides);
+
+  // ambil cover global dari Supabase (berlaku untuk semua pengunjung);
+  // kalau supabase null atau gagal, biarkan pakai nilai localStorage
+  useEffect(() => {
+    let cancelled = false;
+    if (!supabase) return;
+    (async () => {
+      const { data, error } = await supabase.from("doc_covers").select("box_id, file_id");
+      if (cancelled || error || !data) return;
+      const map = {};
+      data.forEach((row) => { map[row.box_id] = row.file_id; });
+      setOverrides(map);
+      // simpan sebagai cache/fallback untuk load berikutnya
+      try { localStorage.setItem(DOC_COVER_KEY, JSON.stringify(map)); } catch (e) { /* abaikan */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <section className="yb-sf yb-doc" id="dokumentasi">
@@ -995,7 +1014,7 @@ export default function YearbookApp() {
             <span className="yb-navbar-brand">
               <img src="/logomaha.png" alt="Logo" className="yb-navbar-logo" />
               <span className="yb-navbar-brand-text">
-                Yearbook
+                Mahawaluya Pangestu
                 <em>SMKN 2 Purwakarta · 2026</em>
               </span>
             </span>
@@ -1148,7 +1167,7 @@ export default function YearbookApp() {
           <p className="yb-footer-meta">
             <span>SMKN 2 Purwakarta</span>
             <span className="yb-footer-dot" />
-            <span>Yearbook Vol. 1</span>
+            <span>Mahawaluya Pangestu Vol. 1</span>
             <span className="yb-footer-dot" />
             <span>2026</span>
           </p>

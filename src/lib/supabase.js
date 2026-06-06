@@ -20,3 +20,8 @@ export const POST_MESSAGE_URL = url
 export const DELETE_MESSAGE_URL = url
   ? `${url}/functions/v1/delete-message`
   : null;
+
+// URL edge function untuk set/hapus cover Dokumentasi global (diproteksi admin token)
+export const SET_COVER_URL = url
+  ? `${url}/functions/v1/set-cover`
+  : null;

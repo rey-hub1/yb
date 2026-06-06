@@ -1,6 +1,6 @@
 // Shared admin primitives dipakai AdminHub, AdminNotes, AdminPDD.
 // Token diverifikasi server-side lewat edge function delete-message (x-admin-token).
-import { DELETE_MESSAGE_URL } from "./supabase";
+import { DELETE_MESSAGE_URL, SET_COVER_URL } from "./supabase";
 
 export const TOKEN_KEY = "yb-admin-token";
 
@@ -8,6 +8,23 @@ export async function callAdmin(token, payload) {
     if (!DELETE_MESSAGE_URL) return { ok: false, status: 0, data: {} };
     try {
         const res = await fetch(DELETE_MESSAGE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-admin-token": token },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.status === 200, status: res.status, data };
+    } catch {
+        return { ok: false, status: 0, data: { error: "Gagal terhubung ke server." } };
+    }
+}
+
+// Push cover Dokumentasi ke Supabase lewat edge function set-cover.
+// payload: { items: [{box_id, file_id}] } | { box_id, file_id } | { box_id, action:"delete" } | { verify:true }
+export async function callSetCover(token, payload) {
+    if (!SET_COVER_URL) return { ok: false, status: 0, data: { error: "Supabase belum dikonfigurasi." } };
+    try {
+        const res = await fetch(SET_COVER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-admin-token": token },
             body: JSON.stringify(payload),
