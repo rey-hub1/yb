@@ -3191,7 +3191,7 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   background: var(--yb-ink); color: var(--yb-bg); border-color: var(--yb-ink);
 }
 .yb-sf-modal-close { padding: 8px; border-radius: 50%; }
-.yb-sf-modal-body { position: relative; flex: 1; background: #fff; }
+.yb-sf-modal-body { position: relative; flex: 1; min-height: 0; background: #fff; }
 .yb-sf-iframe {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
