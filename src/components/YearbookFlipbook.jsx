@@ -758,18 +758,38 @@ function readCoverOverrides() {
 }
 
 // cover satu kotak: lazy-load thumbnail dengan placeholder + spinner, fallback icon.
+// Di HP / internet jelek lh3 sering gagal sesaat → retry beberapa kali (backoff +
+// cache-bust) sebelum nyerah ke icon, biar cover nggak "males" muncul.
+const DOC_COVER_RETRIES = 3;
 function DocCover({ box, override }) {
   // tentukan sumber cover: override admin > foto acak dari pool. Dipilih sekali saat mount.
-  const [src] = useState(() => {
+  const [base] = useState(() => {
     if (override) return /^https?:\/\//i.test(override) ? override : driveThumb(override);
     if (box.covers && box.covers.length) {
       return driveThumb(box.covers[Math.floor(Math.random() * box.covers.length)]);
     }
     return "";
   });
+  const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const timerRef = useRef(null);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  // cache-bust per percobaan supaya browser benar-benar request ulang
+  const src = base
+    ? (attempt ? `${base}${base.includes("?") ? "&" : "?"}r=${attempt}` : base)
+    : "";
   const showImg = src && !failed;
+
+  const handleError = () => {
+    if (attempt < DOC_COVER_RETRIES) {
+      setLoaded(false);
+      timerRef.current = setTimeout(() => setAttempt((a) => a + 1), 700 * (attempt + 1));
+    } else {
+      setFailed(true);
+    }
+  };
 
   return (
     <span className="yb-doc-cover" aria-hidden="true">
@@ -779,6 +799,7 @@ function DocCover({ box, override }) {
       </span>
       {showImg && (
         <img
+          key={src}
           src={src}
           alt=""
           loading="lazy"
@@ -787,7 +808,7 @@ function DocCover({ box, override }) {
           className="yb-doc-cover-img"
           style={{ opacity: loaded ? 1 : 0 }}
           onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
+          onError={handleError}
         />
       )}
       <span className="yb-doc-cover-scrim" />
