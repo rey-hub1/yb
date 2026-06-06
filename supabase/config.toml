@@ -1,0 +1,7 @@
+project_id = "xukiivqxugrjugngkmex"
+
+# post-message = endpoint publik. Punya rate-limit + validasi + service role
+# sendiri, jadi gateway JWT dimatikan supaya publishable key (sb_publishable_…)
+# bisa lewat. delete-message TETAP verify_jwt default (jalur admin).
+[functions.post-message]
+verify_jwt = false
