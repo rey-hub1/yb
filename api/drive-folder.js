@@ -7,39 +7,43 @@
 // thumbnail lh3 (img referrerPolicy=no-referrer) — tidak gantung embed Google.
 //
 // Vercel serverless (Node). Zero dependency (pakai global fetch Node 18+).
+// `fetchFolderFiles` di-reuse oleh dev middleware Vite (lihat vite.config.js)
+// supaya galeri juga jalan di `npm run dev` (Vite tidak menjalankan /api).
+
+// ID folder Drive = 10+ char alfanumerik/-/_; validasi cegah SSRF ke URL lain
+export const FOLDER_ID_RE = /^[-\w]{10,}$/;
+
+export async function fetchFolderFiles(id) {
+  const r = await fetch(
+    `https://drive.google.com/embeddedfolderview?id=${id}#grid`,
+    { headers: { "User-Agent": "Mozilla/5.0 (compatible; yb-bot/1.0)" } },
+  );
+  if (!r.ok) throw new Error(`Drive responded ${r.status}`);
+  const html = await r.text();
+
+  // Tiap file = <div ... id="entry-<FILE_ID>" ...> dengan judul di .flip-entry-title.
+  // Lazy match dari id ke flip-entry-title terdekat → pasangan id+nama.
+  const files = [];
+  const seen = new Set();
+  const re = /id="entry-([-\w]+)"[\s\S]*?flip-entry-title">([^<]*)/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const fid = m[1];
+    if (seen.has(fid)) continue;
+    seen.add(fid);
+    files.push({ id: fid, name: (m[2] || "").trim() });
+  }
+  return files;
+}
 
 export default async function handler(req, res) {
   const id = String(req.query?.id || "").trim();
-  // ID folder Drive = 25+ char alfanumerik/-/_; validasi cegah SSRF ke URL lain
-  if (!/^[-\w]{10,}$/.test(id)) {
+  if (!FOLDER_ID_RE.test(id)) {
     res.status(400).json({ error: "id folder tidak valid" });
     return;
   }
-
   try {
-    const r = await fetch(
-      `https://drive.google.com/embeddedfolderview?id=${id}#grid`,
-      { headers: { "User-Agent": "Mozilla/5.0 (compatible; yb-bot/1.0)" } },
-    );
-    if (!r.ok) {
-      res.status(502).json({ error: "Gagal mengambil folder dari Drive" });
-      return;
-    }
-    const html = await r.text();
-
-    // Tiap file = <div ... id="entry-<FILE_ID>" ...> dengan judul di .flip-entry-title.
-    // Lazy match dari id ke flip-entry-title terdekat → pasangan id+nama.
-    const files = [];
-    const seen = new Set();
-    const re = /id="entry-([-\w]+)"[\s\S]*?flip-entry-title">([^<]*)/g;
-    let m;
-    while ((m = re.exec(html))) {
-      const fid = m[1];
-      if (seen.has(fid)) continue;
-      seen.add(fid);
-      files.push({ id: fid, name: (m[2] || "").trim() });
-    }
-
+    const files = await fetchFolderFiles(id);
     // cache di edge Vercel 1 jam, stale 1 hari → hemat hit ke Google
     res.setHeader(
       "Cache-Control",
