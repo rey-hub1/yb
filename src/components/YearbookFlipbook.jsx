@@ -886,7 +886,7 @@ function DocModal({ item, onClose }) {
             </button>
           </div>
         </div>
-        <div className="yb-sf-modal-body yb-sf-gallery-body">
+        <div className="yb-sf-modal-body yb-sf-gallery-body" data-lenis-prevent>
           {status === "loading" && (
             <div className="yb-sf-modal-loading">
               <span className="yb-sf-spinner" aria-hidden="true" />
