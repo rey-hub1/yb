@@ -792,18 +792,19 @@ function DocCover({ box, override }) {
 
   // hang-detector: di koneksi ngelag, <img> sering nggantung — onLoad maupun
   // onError nggak nembak sama sekali → retry nggak jalan. Timeout per percobaan:
-  // kalau belum load dalam 5 dtk, paksa coba lagi (cache-bust).
+  // kasih waktu lega (10 dtk) sebelum paksa coba lagi (cache-bust), biar gambar
+  // sempat ke-load di koneksi lambat, bukan langsung di-retry.
   useEffect(() => {
     if (!showImg || loaded) return;
-    timerRef.current = setTimeout(advance, 5000);
+    timerRef.current = setTimeout(advance, 10000);
     return () => clearTimeout(timerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, loaded, showImg, attempt]);
 
-  // gagal cepat (404/abort) → coba lagi dengan jeda backoff kecil
+  // gagal cepat (404/abort) → coba lagi dengan jeda backoff
   const handleError = () => {
     clearTimeout(timerRef.current);
-    if (attempt < DOC_COVER_RETRIES) timerRef.current = setTimeout(advance, 600 * (attempt + 1));
+    if (attempt < DOC_COVER_RETRIES) timerRef.current = setTimeout(advance, 1000 * (attempt + 1));
     else setFailed(true);
   };
 
@@ -1113,6 +1114,55 @@ function Documentation() {
   );
 }
 
+// ─── Sejak Kelulusan (count-up realtime) ───────────────────────────────────────
+// Kebalikan countdown: hitung sudah berapa lama sejak kelulusan 7 Mei 2026.
+const GRAD_DATE = new Date("2026-05-07T00:00:00+07:00");
+
+function SinceGraduation() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const diff = Math.max(0, now - GRAD_DATE.getTime());
+  const totalSec = Math.floor(diff / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+
+  const units = [
+    { v: days, l: "Hari" },
+    { v: pad(hours), l: "Jam" },
+    { v: pad(mins), l: "Menit" },
+    { v: pad(secs), l: "Detik" },
+  ];
+
+  return (
+    <section className="yb-since" id="sejak-kelulusan">
+      <div className="yb-since-inner">
+        <span className="yb-section-index yb-since-index">4</span>
+        <p className="yb-since-kicker">Sejak Kelulusan</p>
+        <h2 className="yb-since-title">Sudah sejauh ini kita melangkah</h2>
+        <p className="yb-since-date">7 Mei 2026</p>
+
+        <div className="yb-since-grid">
+          {units.map((u) => (
+            <div className="yb-since-cell" key={u.l}>
+              <span className="yb-since-num">{u.v}</span>
+              <span className="yb-since-lbl">{u.l}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="yb-since-note">…dan terus berjalan, detik demi detik.</p>
+      </div>
+    </section>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function YearbookApp() {
   const [selected, setSelected] = useState(null);
@@ -1327,6 +1377,8 @@ export default function YearbookApp() {
         <MessageWall />
 
         <Documentation />
+
+        <SinceGraduation />
 
         <footer className="yb-footer">
           <div className="yb-footer-divider" aria-hidden="true">
@@ -2437,6 +2489,63 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 /* ════════════════════════════════════════
    FOOTER
    ════════════════════════════════════════ */
+/* ── Sejak Kelulusan (count-up) ── */
+.yb-since {
+  position: relative; z-index: 1;
+  padding: 80px 24px 60px;
+  text-align: center;
+}
+.yb-since-inner { max-width: 760px; margin: 0 auto; }
+.yb-since-index {
+  display: inline-block; margin-bottom: 14px;
+}
+.yb-since-kicker {
+  font-family: var(--yb-page-font);
+  font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase;
+  color: var(--yb-accent); margin: 0 0 10px;
+}
+.yb-since-title {
+  font-family: var(--yb-title-font);
+  font-size: clamp(22px, 4vw, 34px); line-height: 1.2;
+  color: var(--yb-ink); margin: 0 0 8px; font-weight: 400;
+}
+.yb-since-date {
+  font-family: var(--yb-page-font); font-style: italic;
+  font-size: 13px; color: var(--yb-ink-faint); margin: 0 0 32px;
+}
+.yb-since-grid {
+  display: flex; justify-content: center; flex-wrap: wrap;
+  gap: 14px;
+}
+.yb-since-cell {
+  display: flex; flex-direction: column; align-items: center;
+  min-width: 78px;
+  padding: 18px 14px;
+  border: 1px solid var(--yb-border);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.4);
+}
+.yb-since-num {
+  font-family: var(--yb-title-font);
+  font-size: clamp(28px, 6vw, 44px); line-height: 1;
+  color: var(--yb-ink);
+  font-variant-numeric: tabular-nums;
+}
+.yb-since-lbl {
+  font-family: var(--yb-page-font);
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--yb-ink-mid); margin-top: 9px;
+}
+.yb-since-note {
+  font-family: var(--yb-page-font); font-style: italic;
+  font-size: 12.5px; color: var(--yb-ink-faint); margin: 28px 0 0;
+}
+@media (max-width: 480px) {
+  .yb-since { padding: 60px 16px 48px; }
+  .yb-since-grid { gap: 9px; }
+  .yb-since-cell { min-width: 0; flex: 1 1 64px; padding: 14px 8px; }
+}
+
 .yb-footer {
   position: relative; z-index: 1;
   display: flex; flex-direction: column; align-items: center;
