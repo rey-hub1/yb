@@ -53,19 +53,23 @@ export default function MessageWall() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [sending, setSending] = useState(false);
+    const [justSent, setJustSent] = useState(false);
+    const [highlightId, setHighlightId] = useState(null);
     const [error, setError] = useState("");
     const seenIds = useRef(new Set());
 
-    const addMessages = useCallback((rows, prepend = false) => {
+    // tambah satu note (realtime/optimistik) — dedup by id, tempel di atas
+    const prependOne = useCallback((row) => {
+        if (!row?.id) return;
         setMessages((prev) => {
-            const fresh = rows.filter((r) => !seenIds.current.has(r.id));
-            fresh.forEach((r) => seenIds.current.add(r.id));
-            if (fresh.length === 0) return prev;
-            return prepend ? [...fresh, ...prev] : [...prev, ...fresh];
+            if (prev.some((m) => m.id === row.id)) return prev;
+            seenIds.current.add(row.id);
+            return [row, ...prev];
         });
     }, []);
 
-    // ambil pesan terbaru dari server (dipakai load awal + refresh manual)
+    // ambil pesan terbaru dari server (load awal + refresh manual).
+    // REPLACE total dari DB → selalu otoritatif, refresh button pasti sinkron.
     const fetchMessages = useCallback(async () => {
         if (!supabase) return false;
         const { data, error: err } = await supabase
@@ -78,10 +82,29 @@ export default function MessageWall() {
             return false;
         }
         setError("");
-        // pesan baru (belum pernah dilihat) ditempel di paling atas
-        addMessages(data || [], true);
+        const rows = data || [];
+        seenIds.current = new Set(rows.map((r) => r.id));
+        setMessages(rows);
         return true;
-    }, [addMessages]);
+    }, []);
+
+    // konfirmasi note benar-benar tersimpan & bisa dibaca dari DB
+    // (read-after-write — antisipasi replica DB telat sedikit).
+    // Polling by id sampai ketemu atau timeout, biar loading selesai
+    // hanya saat note sudah pasti masuk Supabase.
+    const confirmInDb = useCallback(async (id, tries = 10, delayMs = 400) => {
+        if (!supabase) return false;
+        for (let i = 0; i < tries; i++) {
+            const { data } = await supabase
+                .from("messages")
+                .select("id")
+                .eq("id", id)
+                .maybeSingle();
+            if (data) return true;
+            await new Promise((r) => setTimeout(r, delayMs));
+        }
+        return false;
+    }, []);
 
     // load awal
     useEffect(() => {
@@ -114,13 +137,13 @@ export default function MessageWall() {
             .on(
                 "postgres_changes",
                 { event: "INSERT", schema: "public", table: "messages" },
-                (payload) => addMessages([payload.new], true),
+                (payload) => prependOne(payload.new),
             )
             .subscribe();
         return () => {
             supabase.removeChannel(ch);
         };
-    }, [addMessages]);
+    }, [prependOne]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -138,6 +161,7 @@ export default function MessageWall() {
         }
 
         setSending(true);
+        setJustSent(false);
         let data, status;
         try {
             const res = await fetch(POST_MESSAGE_URL, {
@@ -155,20 +179,38 @@ export default function MessageWall() {
             setError("Gagal menempel. Periksa koneksi.");
             return;
         }
-        setSending(false);
 
         if (status === 429) {
+            setSending(false);
             setError(data?.error ?? "Tunggu 30 detik sebelum nempel lagi.");
             return;
         }
         if (status !== 200) {
+            setSending(false);
             setError(data?.error ?? "Gagal menempel. Coba lagi.");
             return;
         }
 
-        if (data) addMessages([data], true);
+        // status 200 = edge function sudah INSERT + return row.
+        // Tunggu read-after-write: poll DB sampai note benar-benar terbaca,
+        // baru loading selesai — biar user yakin note sudah masuk Supabase.
+        // Tombol tetap "menempel…" selama proses ini.
+        if (data?.id) await confirmInDb(data.id);
+        // tampilkan optimistik (kalau confirm timeout) lalu replace dgn DB-truth
+        if (data) prependOne(data);
+        await fetchMessages();
+
+        setSending(false);
         setBody("");
         setTone(Math.floor(Math.random() * TONES));
+
+        // konfirmasi sukses + sorot note baru biar user langsung lihat
+        if (data?.id) {
+            setHighlightId(data.id);
+            setTimeout(() => setHighlightId((cur) => (cur === data.id ? null : cur)), 2600);
+        }
+        setJustSent(true);
+        setTimeout(() => setJustSent(false), 2600);
     };
 
     return (
@@ -257,14 +299,17 @@ export default function MessageWall() {
                             {body.length}/{MAX_LEN}
                         </span>
                         <button
-                            className="yb-notepad-btn"
+                            className={`yb-notepad-btn${justSent ? " is-done" : ""}`}
                             type="submit"
                             disabled={sending || !body.trim()}
                         >
-                            {sending ? "menempel…" : "Tempel ✎"}
+                            {sending ? "menempel…" : justSent ? "Tertempel ✓" : "Tempel ✎"}
                         </button>
                     </div>
                     {error && <p className="yb-notepad-error">{error}</p>}
+                    {justSent && !error && (
+                        <p className="yb-notepad-ok">Tersimpan di papan. Lihat di bawah ↓</p>
+                    )}
                 </div>
             </form>
 
@@ -345,7 +390,7 @@ export default function MessageWall() {
                                     return (
                                         <article
                                             key={m.id}
-                                            className={`yb-note yb-note--t${t}${isPinned ? " yb-note--pinned" : ""}`}
+                                            className={`yb-note yb-note--t${t}${isPinned ? " yb-note--pinned" : ""}${m.id === highlightId ? " yb-note--new" : ""}`}
                                             style={{
                                                 "--rot": isPinned ? `${v.rot * 0.35}deg` : `${v.rot}deg`,
                                                 "--tape-rot": `${v.tapeRot}deg`,

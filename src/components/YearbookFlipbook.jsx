@@ -1762,6 +1762,14 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 .yb-notepad-error {
   margin: 8px 0 0; color: #b02e1c; font-family: var(--yb-page-font); font-size: 13px;
 }
+.yb-notepad-ok {
+  margin: 8px 0 0; color: #2f8f5b; font-family: var(--yb-page-font); font-size: 13px;
+  animation: okFade .3s ease both;
+}
+@keyframes okFade { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.yb-notepad-btn.is-done {
+  background: #2f8f5b; box-shadow: 0 3px 0 rgba(20,80,50,0.7);
+}
 
 /* ── Papan tempel (masonry sticky notes) ── */
 .yb-refresh-btn {
@@ -1907,6 +1915,16 @@ button { border: none; background: none; cursor: pointer; outline: none; }
     0 16px 48px rgba(60, 42, 24, 0.32),
     0 36px 80px rgba(60, 42, 24, 0.18);
   z-index: 5;
+}
+/* note baru ditempel — sorot sebentar biar user langsung lihat */
+.yb-note--new {
+  animation: notePop 2.6s ease both;
+  z-index: 6;
+}
+@keyframes notePop {
+  0%   { box-shadow: 0 0 0 0 rgba(47,143,91,0.0); }
+  12%  { box-shadow: 0 0 0 4px rgba(47,143,91,0.55), 0 14px 40px rgba(47,143,91,0.3); transform: scale(1.04) rotate(var(--rot)); }
+  100% { box-shadow: 0 0 0 0 rgba(47,143,91,0.0); }
 }
 
 /* CSS pushpin — kepala bulat 3D + batang metalik */

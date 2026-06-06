@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { supabase, DELETE_MESSAGE_URL } from "../lib/supabase";
+import { supabase, DELETE_MESSAGE_URL, POST_MESSAGE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
 
 const TOKEN_KEY = "yb-admin-token";
 const MAX_LEN = 80;
@@ -441,6 +441,143 @@ const R = {
     rowErr: { margin: 0, fontSize: 11, color: "#e06060", fontFamily: "'JetBrains Mono', monospace" },
 };
 
+// ── DIAGNOSTIK ─────────────────────────────────────────────────────────────
+// Tool dev: kirim test note ke edge function, tampil status + response mentah.
+// Bikin satu note "__diag_…" di papan — hapus lewat list di bawah setelah refresh.
+function hintFor(status, data) {
+    if (status === 200) return { tone: "ok", msg: "BERHASIL. Nempel note jalan normal." };
+    if (status === 401) return { tone: "bad", msg: "401 — gateway tolak key. Key bukan JWT (sb_publishable_…) padahal verify_jwt aktif, ATAU app masih baca env lama. Cek VITE_SUPABASE_ANON_KEY + restart/rebuild." };
+    if (status === 429) return { tone: "warn", msg: "429 — cooldown 30 detik. Edge function & DB SEHAT. Tunggu 30 detik, ini bukan bug." };
+    if (status === 500) return { tone: "bad", msg: `500 — error server. ${data?.error === "Server misconfigured." ? "IP_SALT belum di-set di env edge function." : "Cek log edge function di dashboard Supabase."}` };
+    if (status === 0) return { tone: "bad", msg: "Gagal konek — CORS / URL salah / fungsi belum deploy." };
+    return { tone: "warn", msg: `Status ${status} tak terduga. Lihat response di bawah.` };
+}
+
+function DiagPanel() {
+    const [busy, setBusy] = useState(false);
+    const [res, setRes] = useState(null);
+
+    const key = SUPABASE_ANON_KEY || "";
+    const keyKind = !key ? "KOSONG" : key.startsWith("eyJ") ? "JWT (anon — benar)" : "publishable (sb_…) — ditolak edge function";
+    const keyMask = key ? `${key.slice(0, 10)}…${key.slice(-6)}` : "(tidak ada)";
+
+    const ping = async () => {
+        if (!POST_MESSAGE_URL) {
+            setRes({ status: 0, ms: 0, data: { error: "POST_MESSAGE_URL kosong — VITE_SUPABASE_URL belum diisi." }, netErr: null });
+            return;
+        }
+        setBusy(true); setRes(null);
+        const t0 = performance.now();
+        let status = 0, data = {}, netErr = null;
+        try {
+            const r = await fetch(POST_MESSAGE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+                body: JSON.stringify({ name: "_diag", body: `__diag_${Date.now()}__`, color: 0 }),
+            });
+            status = r.status;
+            data = await r.json().catch(() => ({}));
+        } catch (e) {
+            netErr = e?.message || "network error";
+        }
+        const ms = Math.round(performance.now() - t0);
+        setBusy(false);
+        setRes({ status, ms, data, netErr });
+    };
+
+    const hint = res ? hintFor(res.netErr ? 0 : res.status, res.data) : null;
+
+    return (
+        <section style={DX.wrap}>
+            <div style={DX.head}>
+                <span style={DX.badge}>DIAGNOSTIK</span>
+                <span style={DX.headSub}>uji nempel note → status mentah</span>
+            </div>
+
+            <div style={DX.kv}><span style={DX.k}>POST URL</span><span style={DX.v}>{POST_MESSAGE_URL || "(kosong)"}</span></div>
+            <div style={DX.kv}><span style={DX.k}>Key dipakai</span><span style={DX.v}>{keyMask}</span></div>
+            <div style={DX.kv}><span style={DX.k}>Jenis key</span><span style={{ ...DX.v, color: key.startsWith("eyJ") ? "#6fcf97" : "#e0a060" }}>{keyKind}</span></div>
+
+            <button className="yn-btn" style={{ ...DX.btn, opacity: busy ? .6 : 1 }} onClick={ping} disabled={busy}>
+                {busy ? "mengirim…" : "▶ Kirim test note"}
+            </button>
+
+            {res && (
+                <div style={DX.out}>
+                    <div style={DX.statusRow}>
+                        <span style={{ ...DX.statusPill, background: res.status === 200 ? "#0e2a18" : "#2a0e0e", color: res.status === 200 ? "#6fcf97" : "#e06060", borderColor: res.status === 200 ? "#6fcf9740" : "#e0606040" }}>
+                            {res.netErr ? "NETWORK ERR" : `HTTP ${res.status}`}
+                        </span>
+                        <span style={DX.ms}>{res.ms} ms</span>
+                    </div>
+                    {hint && (
+                        <p style={{ ...DX.hint, color: hint.tone === "ok" ? "#6fcf97" : hint.tone === "warn" ? "#e0c060" : "#e08080" }}>
+                            {hint.msg}
+                        </p>
+                    )}
+                    <pre style={DX.pre}>{res.netErr ? res.netErr : JSON.stringify(res.data, null, 2)}</pre>
+                </div>
+            )}
+        </section>
+    );
+}
+
+const DX = {
+    wrap: {
+        maxWidth: 860,
+        margin: "0 auto 24px",
+        padding: "18px 20px",
+        background: "#0d0d14",
+        border: "1px solid #252530",
+        borderRadius: 3,
+    },
+    head: { display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 },
+    badge: { fontSize: 9, letterSpacing: ".22em", color: "#c8a44a", fontWeight: 500 },
+    headSub: { fontSize: 10, color: "#70708a", letterSpacing: ".03em" },
+    kv: { display: "flex", gap: 12, fontSize: 11, padding: "3px 0", alignItems: "baseline" },
+    k: { color: "#70708a", minWidth: 88, flexShrink: 0 },
+    v: { color: "#cfcad8", wordBreak: "break-all" },
+    btn: {
+        marginTop: 14,
+        padding: "9px 16px",
+        border: "1px solid #c8a44a60",
+        borderRadius: 2,
+        background: "#c8a44a14",
+        color: "#c8a44a",
+        fontSize: 11,
+        fontFamily: "'JetBrains Mono', monospace",
+        cursor: "pointer",
+        letterSpacing: ".05em",
+        transition: "opacity .15s, transform .1s",
+    },
+    out: { marginTop: 16, borderTop: "1px solid #1e1e2a", paddingTop: 14 },
+    statusRow: { display: "flex", alignItems: "center", gap: 12, marginBottom: 10 },
+    statusPill: {
+        padding: "4px 10px",
+        borderRadius: 2,
+        border: "1px solid",
+        fontSize: 11,
+        fontWeight: 500,
+        letterSpacing: ".05em",
+    },
+    ms: { fontSize: 10, color: "#70708a" },
+    hint: { margin: "0 0 12px", fontSize: 12, lineHeight: 1.5 },
+    pre: {
+        margin: 0,
+        padding: "12px 14px",
+        background: "#07070a",
+        border: "1px solid #1e1e2a",
+        borderRadius: 2,
+        color: "#9ad1b0",
+        fontSize: 11,
+        lineHeight: 1.5,
+        fontFamily: "'JetBrains Mono', monospace",
+        overflowX: "auto",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+    },
+};
+
 // ── DASHBOARD ──────────────────────────────────────────────────────────────
 export default function AdminNotes({ onBack }) {
     const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || "");
@@ -509,6 +646,9 @@ export default function AdminNotes({ onBack }) {
 
             {/* ── garis emas ── */}
             <div style={D.goldenRule} />
+
+            {/* ── diagnostik (dev) ── */}
+            <DiagPanel />
 
             {/* ── search ── */}
             <div style={D.searchWrap}>
