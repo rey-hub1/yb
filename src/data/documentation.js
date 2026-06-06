@@ -42,8 +42,8 @@ const COVERS = {
   // 1dnf9... (Video Mentah, cache collision).
 };
 
-function box(id, name, sub, icon) {
-  return { id, name, sub, icon, covers: COVERS[id] || [] };
+function box(id, name, sub, icon, disabled = false) {
+  return { id, name, sub, icon, disabled, covers: COVERS[id] || [] };
 }
 
 export const DOC_SECTIONS = [
@@ -55,7 +55,7 @@ export const DOC_SECTIONS = [
     folder: "1Yhj_RXJnZ35U5bORiKktije6hTouq1Re",
     boxes: [
       box("1r-uBCfdrSS-UKRbJa2BL2_4FWIdI2-PK", "Pengalungan Medali", "& Siswa Berprestasi", "🏅"),
-      box("15t15xMXHTPUxUL6mG6GxTq31UiOh9oPi", "Cinematic Video", "Highlight acara", "🎬"),
+      box("15t15xMXHTPUxUL6mG6GxTq31UiOh9oPi", "Cinematic Video", "Highlight acara", "🎬", 'true'),
       box("1fA7wXPvT322cGpIEcLQVDoGjyLowMcIL", "Video HP", "Rekaman warga", "📱"),
       box("1sJerDlqP2RSzqCMWCQyHYByhOiyrWbGN", "Foto (HP)", "Galeri foto", "📸"),
       box("1zj7Rx-oL5D82IXALTyQstKLHzN6oZH_4", "Potong Tumpeng", "Seremoni", "🍚"),

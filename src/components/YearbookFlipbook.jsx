@@ -866,7 +866,6 @@ function DocModal({ item, onClose }) {
       <div className="yb-sf-modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="yb-sf-modal-head">
           <div className="yb-sf-modal-meta">
-            <span className="yb-sf-modal-icon" aria-hidden="true">{item.icon}</span>
             <div>
               <h3 className="yb-sf-modal-title">{item.name}</h3>
               <span className="yb-sf-modal-sub">{item.sectionLabel}</span>
