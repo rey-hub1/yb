@@ -1559,15 +1559,18 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   .yb-navbar-brand-text em { display: none; }
   .yb-navbar-brand { gap: 9px; }
   .yb-navbar-logo { width: 30px; height: 30px; }
-  .yb-nav-actions { gap: 7px; }
-  .yb-nav-btn { padding: 7px 11px; font-size: 11.5px; }
+  .yb-nav-actions { gap: 6px; }
+  .yb-nav-btn { padding: 6px 10px; font-size: 11px; }
+  .yb-nav-ico { font-size: 12px; }
 }
-@media (max-width: 430px) {
-  .yb-nav-lbl { display: none; } /* BGM/tema jadi icon-only */
-  .yb-nav-btn { padding: 8px 9px; }
-  .yb-nav-ico { font-size: 14px; }
-  .yb-nav-btn--admin { padding: 7px 13px; }
+/* hp: label hilang lebih awal (di lebih banyak hp) → icon-only, tdk sumpek */
+@media (max-width: 500px) {
+  .yb-nav-lbl { display: none; }
+  .yb-nav-btn { padding: 7px 8px; }
+  .yb-nav-ico { font-size: 12.5px; }
+  .yb-nav-btn--admin { padding: 7px 8px; }
   .yb-navbar-brand-text { font-size: 16px; }
+  .yb-nav-actions { gap: 5px; }
 }
 
 .yb-hero-logo {
