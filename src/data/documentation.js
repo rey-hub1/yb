@@ -49,7 +49,7 @@ function box(id, name, sub, icon, disabled = false) {
 export const DOC_SECTIONS = [
   {
     id: "smartfest",
-    index: "03.1",
+    index: "3.1",
     label: "Smart Fest",
     desc: "Dokumentasi acara · 25 Mei 2025",
     folder: "1Yhj_RXJnZ35U5bORiKktije6hTouq1Re",
@@ -73,7 +73,7 @@ export const DOC_SECTIONS = [
   },
   {
     id: "pdd",
-    index: "03.2",
+    index: "3.2",
     label: "Dokumentasi PDD",
     desc: "Rekaman dokumentasi per orang",
     folder: "1GBCAzKQR9jFzXUTqII0chkhijt13YL1N",
@@ -87,7 +87,7 @@ export const DOC_SECTIONS = [
   },
   {
     id: "angkatan",
-    index: "03.3",
+    index: "3.3",
     label: "Foto Angkatan",
     desc: "Kenangan satu angkatan",
     folder: "1t-l6d3NKN-G0mtyKI8FN7H-7lYTFjcL8",
