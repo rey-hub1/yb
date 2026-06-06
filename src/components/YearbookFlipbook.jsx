@@ -3198,7 +3198,12 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   border: 0;
   transition: opacity 0.4s ease;
 }
-.yb-sf-gallery-body { overflow-y: auto; background: var(--yb-bg-lt); }
+.yb-sf-gallery-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background: var(--yb-bg-lt);
+}
 .yb-sf-gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
