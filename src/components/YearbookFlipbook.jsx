@@ -829,11 +829,56 @@ function GalleryTile({ file }) {
   );
 }
 
+// kotak subfolder: ikon folder, lazy cek jumlah isi → folder kosong dapat ikon
+// khusus. Klik → drill-down ke folder itu di dalam modal yang sama.
+function FolderTile({ file, onOpen }) {
+  const [count, setCount] = useState(null); // null = belum tau / loading
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/drive-folder?id=${encodeURIComponent(file.id)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => { if (!cancelled) setCount(Array.isArray(d?.files) ? d.files.length : 0); })
+      .catch(() => { if (!cancelled) setCount(0); });
+    return () => { cancelled = true; };
+  }, [file.id]);
+  const empty = count === 0;
+
+  return (
+    <button
+      className="yb-sf-tile yb-sf-folder-tile"
+      onClick={() => !empty && onOpen(file.id, file.name)}
+      disabled={empty}
+      title={file.name || ""}
+    >
+      <span className="yb-sf-folder-ico" aria-hidden="true">
+        {empty ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+            <line x1="9.5" y1="13" x2="15.5" y2="13" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+          </svg>
+        )}
+      </span>
+      <span className="yb-sf-folder-name">{file.name}</span>
+      <span className="yb-sf-folder-meta">{count == null ? "…" : empty ? "kosong" : `${count} item`}</span>
+    </button>
+  );
+}
+
 function DocModal({ item, onClose }) {
   // galeri di-render sendiri dari /api/drive-folder (proxy parse embeddedfolderview
   // server-side) → grid thumbnail lh3. Tidak pakai iframe Drive (di-block by origin).
+  // stack = jejak drill-down subfolder; index terakhir = folder yang sedang dibuka.
+  const [stack, setStack] = useState([{ id: item.id, name: item.name }]);
+  const current = stack[stack.length - 1];
   const [status, setStatus] = useState("loading"); // loading | ok | empty | err
   const [files, setFiles] = useState([]);
+
+  const goFolder = (id, name) => setStack((s) => [...s, { id, name }]);
+  const goBack = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -849,31 +894,42 @@ function DocModal({ item, onClose }) {
     let cancelled = false;
     setStatus("loading");
     setFiles([]);
-    fetch(`/api/drive-folder?id=${encodeURIComponent(item.id)}`)
+    fetch(`/api/drive-folder?id=${encodeURIComponent(current.id)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         if (cancelled) return;
         const list = Array.isArray(data?.files) ? data.files : [];
+        // folder selalu di depan, urutan asli dipertahankan dalam grup (sort stabil)
+        list.sort((a, b) => (a.kind === "folder" ? 0 : 1) - (b.kind === "folder" ? 0 : 1));
         setFiles(list);
         setStatus(list.length ? "ok" : "empty");
       })
       .catch(() => { if (!cancelled) setStatus("err"); });
     return () => { cancelled = true; };
-  }, [item.id]);
+  }, [current.id]);
 
   return (
     <div className="yb-sf-modal" onClick={onClose}>
       <div className="yb-sf-modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="yb-sf-modal-head">
           <div className="yb-sf-modal-meta">
+            {stack.length > 1 && (
+              <button onClick={goBack} className="yb-sf-modal-btn yb-sf-modal-back" aria-label="Kembali">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+                </svg>
+              </button>
+            )}
             <div>
-              <h3 className="yb-sf-modal-title">{item.name}</h3>
-              <span className="yb-sf-modal-sub">{item.sectionLabel}</span>
+              <h3 className="yb-sf-modal-title">{current.name}</h3>
+              <span className="yb-sf-modal-sub">
+                {stack.length > 1 ? stack.map((s) => s.name).join(" / ") : item.sectionLabel}
+              </span>
             </div>
           </div>
           <div className="yb-sf-modal-actions">
             <a
-              href={`https://drive.google.com/drive/folders/${item.id}`}
+              href={`https://drive.google.com/drive/folders/${current.id}`}
               target="_blank"
               rel="noopener noreferrer"
               className="yb-sf-modal-btn"
@@ -899,9 +955,9 @@ function DocModal({ item, onClose }) {
           )}
           {(status === "empty" || status === "err") && (
             <div className="yb-sf-modal-loading">
-              {status === "err" ? "Gagal memuat galeri." : "Belum ada foto di folder ini."}
+              {status === "err" ? "Gagal memuat galeri." : "Folder ini kosong."}
               <a
-                href={`https://drive.google.com/drive/folders/${item.id}`}
+                href={`https://drive.google.com/drive/folders/${current.id}`}
                 target="_blank" rel="noopener noreferrer"
                 className="yb-sf-modal-btn"
               >Buka di Drive</a>
@@ -909,7 +965,11 @@ function DocModal({ item, onClose }) {
           )}
           {status === "ok" && (
             <div className="yb-sf-gallery">
-              {files.map((f) => <GalleryTile key={f.id} file={f} />)}
+              {files.map((f) => (
+                f.kind === "folder"
+                  ? <FolderTile key={f.id} file={f} onOpen={goFolder} />
+                  : <GalleryTile key={f.id} file={f} />
+              ))}
             </div>
           )}
         </div>
@@ -3254,6 +3314,28 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   pointer-events: none;
 }
 .yb-sf-tile-play svg { width: 16px; height: 16px; margin-left: 2px; }
+.yb-sf-folder-tile {
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #efeadd;
+  color: var(--yb-accent);
+  cursor: pointer;
+  text-align: center;
+}
+.yb-sf-folder-tile:disabled { cursor: default; opacity: 0.6; }
+.yb-sf-folder-tile:not(:disabled):hover { transform: scale(1.02); }
+.yb-sf-folder-ico { width: 40px; height: 40px; }
+.yb-sf-folder-ico svg { width: 100%; height: 100%; }
+.yb-sf-folder-name {
+  font-family: var(--yb-page-font);
+  font-size: 12px; line-height: 1.25; color: var(--yb-ink);
+  max-width: 100%;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.yb-sf-folder-meta { font-size: 10px; letter-spacing: 0.04em; color: var(--yb-ink-faint); }
+.yb-sf-modal-back { padding: 8px; border-radius: 50%; }
 .yb-sf-modal-loading {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center; gap: 10px;

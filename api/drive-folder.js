@@ -13,6 +13,16 @@
 // ID folder Drive = 10+ char alfanumerik/-/_; validasi cegah SSRF ke URL lain
 export const FOLDER_ID_RE = /^[-\w]{10,}$/;
 
+// decode entity HTML umum di nama file (&amp; &lt; &gt; &quot; &#39;)
+function decodeEntities(s) {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 export async function fetchFolderFiles(id) {
   const r = await fetch(
     `https://drive.google.com/embeddedfolderview?id=${id}#grid`,
@@ -21,21 +31,25 @@ export async function fetchFolderFiles(id) {
   if (!r.ok) throw new Error(`Drive responded ${r.status}`);
   const html = await r.text();
 
-  // Tiap file = <div ... id="entry-<FILE_ID>" ...> dengan ikon mime
-  // (.../type/<image|video|...>/...) lalu judul di .flip-entry-title.
-  // Lazy match dari id → ikon tipe → title (semua dalam 1 entry).
+  // Tiap entry = <div ... id="entry-<ID>"> ... <div ...flip-entry-title">NAMA.
+  // Antara id & title ada penanda tipe:
+  //   - folder: class "drive-sprite-folder…" / href "/drive/folders/" (TANPA /type/)
+  //   - file:   ikon mime ".../type/<image|video|…>/…"
   const files = [];
   const seen = new Set();
-  const re = /id="entry-([-\w]+)"[\s\S]*?\/type\/([a-z]+)\/[^"\s]*[\s\S]*?flip-entry-title">([^<]*)/g;
+  const re = /id="entry-([-\w]+)"([\s\S]*?)flip-entry-title">([^<]*)/g;
   let m;
   while ((m = re.exec(html))) {
     const fid = m[1];
     if (seen.has(fid)) continue;
     seen.add(fid);
-    // top-level mime → kind sederhana: video | image | other
-    const top = m[2];
-    const kind = top === "video" ? "video" : top === "image" ? "image" : "other";
-    files.push({ id: fid, name: (m[3] || "").trim(), kind });
+    const meta = m[2];
+    let kind;
+    if (/drive-sprite-folder|aria-label="Folder"|\/drive\/folders\//.test(meta)) kind = "folder";
+    else if (/\/type\/video\//.test(meta)) kind = "video";
+    else if (/\/type\/image\//.test(meta)) kind = "image";
+    else kind = "other";
+    files.push({ id: fid, name: decodeEntities((m[3] || "").trim()), kind });
   }
   return files;
 }
