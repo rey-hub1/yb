@@ -795,8 +795,40 @@ function DocCover({ box, override }) {
   );
 }
 
+// satu thumbnail galeri: lh3 (no-referrer), sembunyi kalau gagal load (mis. file raw)
+function GalleryTile({ file }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <a
+      href={`https://drive.google.com/file/d/${file.id}/view`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="yb-sf-tile"
+      title={file.name || ""}
+    >
+      {!loaded && <span className="yb-sf-spinner yb-sf-tile-spin" aria-hidden="true" />}
+      <img
+        src={driveThumb(file.id)}
+        alt={file.name || ""}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        className="yb-sf-tile-img"
+        style={{ opacity: loaded ? 1 : 0 }}
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+      />
+    </a>
+  );
+}
+
 function DocModal({ item, onClose }) {
-  const [ready, setReady] = useState(false);
+  // galeri di-render sendiri dari /api/drive-folder (proxy parse embeddedfolderview
+  // server-side) → grid thumbnail lh3. Tidak pakai iframe Drive (di-block by origin).
+  const [status, setStatus] = useState("loading"); // loading | ok | empty | err
+  const [files, setFiles] = useState([]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -807,6 +839,22 @@ function DocModal({ item, onClose }) {
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading");
+    setFiles([]);
+    fetch(`/api/drive-folder?id=${encodeURIComponent(item.id)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.files) ? data.files : [];
+        setFiles(list);
+        setStatus(list.length ? "ok" : "empty");
+      })
+      .catch(() => { if (!cancelled) setStatus("err"); });
+    return () => { cancelled = true; };
+  }, [item.id]);
 
   return (
     <div className="yb-sf-modal" onClick={onClose}>
@@ -838,22 +886,28 @@ function DocModal({ item, onClose }) {
             </button>
           </div>
         </div>
-        <div className="yb-sf-modal-body">
-          {!ready && (
+        <div className="yb-sf-modal-body yb-sf-gallery-body">
+          {status === "loading" && (
             <div className="yb-sf-modal-loading">
               <span className="yb-sf-spinner" aria-hidden="true" />
               Memuat galeri…
             </div>
           )}
-          <iframe
-            src={`https://drive.google.com/embeddedfolderview?id=${item.id}#grid`}
-            title={`Galeri ${item.name}`}
-            className="yb-sf-iframe"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onLoad={() => setReady(true)}
-            style={{ opacity: ready ? 1 : 0 }}
-          />
+          {(status === "empty" || status === "err") && (
+            <div className="yb-sf-modal-loading">
+              {status === "err" ? "Gagal memuat galeri." : "Belum ada foto di folder ini."}
+              <a
+                href={`https://drive.google.com/drive/folders/${item.id}`}
+                target="_blank" rel="noopener noreferrer"
+                className="yb-sf-modal-btn"
+              >Buka di Drive</a>
+            </div>
+          )}
+          {status === "ok" && (
+            <div className="yb-sf-gallery">
+              {files.map((f) => <GalleryTile key={f.id} file={f} />)}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -3144,6 +3198,29 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   border: 0;
   transition: opacity 0.4s ease;
 }
+.yb-sf-gallery-body { overflow-y: auto; background: var(--yb-bg-lt); }
+.yb-sf-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 14px;
+}
+.yb-sf-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #e7e2d6;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.18s ease;
+}
+.yb-sf-tile:hover { transform: scale(1.02); }
+.yb-sf-tile-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transition: opacity 0.3s ease;
+}
+.yb-sf-tile-spin { position: absolute; }
 .yb-sf-modal-loading {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center; gap: 10px;
