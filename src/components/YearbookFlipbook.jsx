@@ -850,6 +850,7 @@ function DocModal({ item, onClose }) {
             title={`Galeri ${item.name}`}
             className="yb-sf-iframe"
             loading="lazy"
+            referrerPolicy="no-referrer"
             onLoad={() => setReady(true)}
             style={{ opacity: ready ? 1 : 0 }}
           />
