@@ -196,13 +196,21 @@ function playFlipSound(ctxRef) {
 
 // ─── Flipbook Viewer ──────────────────────────────────────────────────────────
 function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
-  const viewPdf = classData.pdf.replace(".pdf", "-optimized.pdf");
+  const baseViewPdf = classData.pdf.replace(".pdf", "-optimized.pdf");
+  const [lowEnd] = useState(isLowEndDevice);
   const [numPages, setNumPages]   = useState(null);
   const [documentReady, setDocumentReady] = useState(false);
   const [firstPageReady, setFirstPageReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError]         = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
+  // attempt > 0 → cache-bust biar browser bener-bener minta ulang (stall-retry)
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const viewPdf = loadAttempt > 0
+    ? `${baseViewPdf}${baseViewPdf.includes("?") ? "&" : "?"}r=${loadAttempt}`
+    : baseViewPdf;
+  const pdfDocRef = useRef(null);
+  const stallTimerRef = useRef(null);
   const [spreadThemeStyle, setSpreadThemeStyle] = useState(viewerThemeStyle);
   const [displayedThemeStyle, setDisplayedThemeStyle] = useState(viewerThemeStyle);
   const [fadingThemeStyle, setFadingThemeStyle] = useState(null);
@@ -280,8 +288,9 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
     if (!total) return;
     setLoadProgress(Math.min(100, Math.round((loaded / total) * 100)));
   }, []);
-  const handleLoadSuccess = useCallback(({ numPages: n }) => {
-    setNumPages(n);
+  const handleLoadSuccess = useCallback((pdf) => {
+    pdfDocRef.current = pdf;
+    setNumPages(pdf.numPages);
     setDocumentReady(true);
     setLoadProgress(100);
   }, []);
@@ -294,7 +303,13 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
     setFirstPageReady(true);
   }, []);
 
+  // Ganti kelas → mulai dari percobaan 0 lagi (cache-bust lama nggak relevan).
   useEffect(() => {
+    setLoadAttempt(0);
+  }, [classData.pdf]);
+
+  useEffect(() => {
+    pdfDocRef.current = null;
     setNumPages(null);
     setDocumentReady(false);
     setFirstPageReady(false);
@@ -305,6 +320,22 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
     setDisplayedThemeStyle(viewerThemeStyle);
     setFadingThemeStyle(null);
   }, [viewPdf]);
+
+  // Hang-detector buat PDF: di koneksi ngelag, request bisa "diam" tanpa progress
+  // & tanpa onLoadError nembak (sama kayak masalah <img> di DocCover). Kalau
+  // loadProgress macet & belum ready dalam waktu lega, paksa retry pakai
+  // cache-bust (`?r=n`) — abis beberapa kali coba, baru nyerah ke pesan error.
+  const PDF_STALL_TIMEOUT = 25000;
+  const MAX_LOAD_RETRIES = 2;
+  useEffect(() => {
+    if (documentReady || error) return;
+    clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      if (loadAttempt < MAX_LOAD_RETRIES) setLoadAttempt((a) => a + 1);
+      else setError("Koneksi sepertinya macet. Cek jaringan, lalu coba lagi.");
+    }, PDF_STALL_TIMEOUT);
+    return () => clearTimeout(stallTimerRef.current);
+  }, [loadProgress, documentReady, error, loadAttempt]);
 
   useEffect(() => {
     setSpreadThemeStyle(viewerThemeStyle);
@@ -338,9 +369,12 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
     const { left, right } = getSpreadPageNumbers(currentPage, numPages);
     let cancelled = false;
 
+    // Pinjam pdf proxy yg udah ke-load <Document> — jangan getDocument baru
+    // (itu artinya download+parse PDF kedua kalinya cuma buat sampling warna).
+    const pdfDoc = pdfDocRef.current;
     Promise.all([
-      extractPdfPalette(viewPdf, left, classData.hue),
-      right ? extractPdfPalette(viewPdf, right, classData.hue) : Promise.resolve(null),
+      extractPdfPalette(viewPdf, left, classData.hue, pdfDoc),
+      right ? extractPdfPalette(viewPdf, right, classData.hue, pdfDoc) : Promise.resolve(null),
     ]).then(([leftPalette, rightPalette]) => {
       if (cancelled || !leftPalette) return;
       setSpreadThemeStyle(getViewerThemeStyle(buildSpreadPalette(leftPalette, rightPalette)));
@@ -377,7 +411,9 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
   const currentSpread = atEnd ? Math.max(0, totalSpreads - 1) : Math.floor(currentPage / 2);
   const progressPct = totalSpreads ? (atEnd ? 100 : ((currentSpread + 1) / totalSpreads) * 100) : 0;
   const loading = !documentReady || !firstPageReady;
-  const RENDER_WINDOW = 4;
+  // Device/koneksi lemah → render lebih sedikit halaman sekaligus (tiap halaman
+  // = 2 canvas lo+hi-res; jendela lebih sempit = lebih hemat memori & bandwidth).
+  const RENDER_WINDOW = lowEnd ? 2 : 4;
 
   return (
     <div ref={overlayRef} className="yb-overlay" style={displayedThemeStyle}>
@@ -593,13 +629,33 @@ const SVG_ICONS = [
 
 const ANGKATAN_PHOTOS = ['/angkatan/1.jpg', '/angkatan/2.jpg'];
 
+const HERO_AUTO_ROTATE_MS = 4500;
+
 function HeroPhotos() {
   const [current, setCurrent] = useState(0);
   const touchStartX = useRef(null);
+  const autoTimerRef = useRef(null);
   const total = ANGKATAN_PHOTOS.length;
 
-  const prev = () => setCurrent(i => (i - 1 + total) % total);
-  const next = () => setCurrent(i => (i + 1) % total);
+  // Auto-gonta-ganti slide di HP (di desktop kedua foto udah keliatan
+  // bersamaan, jadi timer ini cuma efektif di carousel mobile). Reset
+  // tiap kali user gerak manual (swipe/dot) biar nggak kerasa "rebutan".
+  const restartAutoRotate = useCallback(() => {
+    clearInterval(autoTimerRef.current);
+    if (total <= 1) return;
+    autoTimerRef.current = setInterval(() => {
+      setCurrent(i => (i + 1) % total);
+    }, HERO_AUTO_ROTATE_MS);
+  }, [total]);
+
+  useEffect(() => {
+    restartAutoRotate();
+    return () => clearInterval(autoTimerRef.current);
+  }, [restartAutoRotate]);
+
+  const prev = () => { setCurrent(i => (i - 1 + total) % total); restartAutoRotate(); };
+  const next = () => { setCurrent(i => (i + 1) % total); restartAutoRotate(); };
+  const goTo = (i) => { setCurrent(i); restartAutoRotate(); };
 
   const onTouchStart = e => { touchStartX.current = e.touches[0].clientX; };
   const onTouchEnd   = e => {
@@ -611,6 +667,7 @@ function HeroPhotos() {
 
   return (
     <div className="yb-hero-photos">
+      <div className="yb-hero-photos-glow" aria-hidden="true" />
       {/* Desktop: side by side */}
       <div className="yb-hero-photos-row">
         {ANGKATAN_PHOTOS.map((src, i) => (
@@ -635,7 +692,7 @@ function HeroPhotos() {
             <button
               key={i}
               className={`yb-hero-photos-dot${i === current ? ' active' : ''}`}
-              onClick={() => setCurrent(i)}
+              onClick={() => goTo(i)}
               aria-label={`Foto angkatan ${i + 1}`}
             />
           ))}
@@ -690,6 +747,16 @@ function FloatingParticles() {
 // ─── Splash Screen ───────────────────────────────────────────────────────────
 function SplashScreen({ onEnter }) {
   const [exiting, setExiting] = useState(false);
+
+  // Preload foto angkatan selagi user masih liat splash — pas masuk ke
+  // hero section, fotonya udah ada di cache browser, langsung muncul
+  // tanpa nunggu (gak nunggu animasi splash kelar baru mulai fetch).
+  useEffect(() => {
+    ANGKATAN_PHOTOS.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+    });
+  }, []);
 
   const handleEnter = () => {
     setExiting(true);
@@ -773,14 +840,34 @@ function DocCover({ box, override }) {
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [nearView, setNearView] = useState(false);
+  const wrapRef = useRef(null);
   const timerRef = useRef(null);
   useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  // ganti `loading="lazy"` bawaan <img> dgn observer manual — supaya kita TAU
+  // pasti kapan browser mulai nge-fetch. Sebelumnya: hang-detector mulai
+  // hitung mundur dari mount, padahal box yg masih di bawah layar belum
+  // di-fetch browser sama sekali (lazy nunda) → abis retry 3x (~40dtk)
+  // nyerah ke ikon, padahal bukan koneksi yg gagal, cuma belum sempet diminta.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !base) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        setNearView(true);
+        io.disconnect();
+      }
+    }, { rootMargin: "400px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [base]);
 
   // cache-bust per percobaan supaya browser benar-benar request ulang
   const src = base
     ? (attempt ? `${base}${base.includes("?") ? "&" : "?"}r=${attempt}` : base)
     : "";
-  const showImg = src && !failed;
+  const showImg = nearView && src && !failed;
 
   // lanjut ke percobaan berikutnya, atau nyerah ke icon kalau kuota habis
   const advance = () => {
@@ -809,7 +896,7 @@ function DocCover({ box, override }) {
   };
 
   return (
-    <span className="yb-doc-cover" aria-hidden="true">
+    <span className="yb-doc-cover" aria-hidden="true" ref={wrapRef}>
       <span className="yb-doc-cover-ph">
         <span className="yb-doc-cover-icon">{box.icon}</span>
         {showImg && !loaded && <span className="yb-sf-spinner yb-doc-cover-spin" />}
@@ -819,7 +906,6 @@ function DocCover({ box, override }) {
           key={src}
           src={src}
           alt=""
-          loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
           className="yb-doc-cover-img"
@@ -1342,7 +1428,9 @@ export default function YearbookApp() {
                 <button
                   key={cls.id}
                   onClick={() => setSelected(cls)}
-                  onMouseEnter={() => fetch(cls.pdf.replace(".pdf", "-optimized.pdf"), { priority: "low" }).catch(() => {})}
+                  // Skip prefetch di device/koneksi lemah — hover di HP = tap, jadi
+                  // prefetch nembak bareng klik buka viewer & rebutan bandwidth.
+                  onMouseEnter={lowEnd ? undefined : () => fetch(cls.pdf.replace(".pdf", "-optimized.pdf"), { priority: "low" }).catch(() => {})}
                   className="yb-card"
                   style={{
                     ...getCardStyle(cls, i, extractedPalettes),
@@ -1835,8 +1923,56 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 
 /* ── Hero Photos ─────────────────────────── */
 .yb-hero-photos {
+  position: relative;
   margin: 28px 0 24px;
   animation: heroRise 1s cubic-bezier(0.16,1,0.3,1) 0.55s backwards;
+}
+
+/* Ambient glow lembut di belakang foto angkatan — dua titik cahaya warna
+   aksen yang melayang & berdenyut pelan, ngasih kesan hangat tanpa ganggu
+   baca (blur jauh, opacity rendah, screen blend biar nyatu sama bg). */
+.yb-hero-photos-glow {
+  position: absolute;
+  inset: -56px -32px;
+  z-index: -1;
+  pointer-events: none;
+  filter: blur(44px);
+  /* soft-light: nerangin bagian terang & nge-tint bagian gelap — "nyala"
+     di atas krem terang (beda sama screen yg cuma keliatan di bg gelap) */
+  mix-blend-mode: soft-light;
+}
+.yb-hero-photos-glow::before,
+.yb-hero-photos-glow::after {
+  content: '';
+  position: absolute;
+  width: 260px; height: 260px;
+  border-radius: 50%;
+}
+.yb-hero-photos-glow::before {
+  top: -18%; left: 2%;
+  opacity: 0.85;
+  /* emas-krem hangat — sumber cahaya utama */
+  background: radial-gradient(circle, #f6dba4 0%, transparent 70%);
+  animation: ybHeroGlowDriftA 12s ease-in-out infinite alternate;
+}
+.yb-hero-photos-glow::after {
+  bottom: -22%; right: 4%;
+  opacity: 0.7;
+  /* terracotta lembut — pemanis warna kedua, senada --yb-accent */
+  background: radial-gradient(circle, #e8a98c 0%, transparent 72%);
+  animation: ybHeroGlowDriftB 15s ease-in-out infinite alternate;
+}
+@keyframes ybHeroGlowDriftA {
+  0%   { transform: translate(0, 0) scale(1);          opacity: 0.7; }
+  100% { transform: translate(34px, 24px) scale(1.22); opacity: 0.95; }
+}
+@keyframes ybHeroGlowDriftB {
+  0%   { transform: translate(0, 0) scale(1);           opacity: 0.55; }
+  100% { transform: translate(-28px, -18px) scale(1.15); opacity: 0.8; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .yb-hero-photos-glow::before,
+  .yb-hero-photos-glow::after { animation: none; opacity: 0.26; }
 }
 
 /* Desktop: side by side */

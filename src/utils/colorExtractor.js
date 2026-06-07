@@ -222,7 +222,7 @@ export function getPdfPaletteFromPixels(
   return buildPalette(primaryCandidate.hex, secondaryCandidate?.hex);
 }
 
-export async function extractPdfPalette(pdfUrl, pageNumber, fallbackColor) {
+export async function extractPdfPalette(pdfUrl, pageNumber, fallbackColor, pdfDocument) {
   const fallbackPalette = buildPalette(fallbackColor);
   const cacheKey = `${pdfUrl}::${pageNumber}`;
 
@@ -230,8 +230,15 @@ export async function extractPdfPalette(pdfUrl, pageNumber, fallbackColor) {
     return PDF_COLOR_CACHE.get(cacheKey);
   }
 
-  const loadingTask = pdfjs.getDocument(pdfUrl);
-  const palettePromise = loadingTask.promise
+  // Kalau viewer udah punya PDF proxy yg ke-load (react-pdf <Document>), pakai itu —
+  // jangan getDocument baru, soalnya itu artinya download+parse PDF KEDUA KALINYA
+  // cuma buat sampling warna (boros di koneksi lelet). loadingTask cuma dibikin
+  // (dan di-destroy) kalau kita yang punya document-nya sendiri.
+  const ownsDocument = !pdfDocument;
+  const loadingTask = ownsDocument ? pdfjs.getDocument(pdfUrl) : null;
+  const pdfPromise = ownsDocument ? loadingTask.promise : Promise.resolve(pdfDocument);
+
+  const palettePromise = pdfPromise
     .then(async (pdf) => {
       try {
         const sourcePageNumber = Math.min(Math.max(1, pageNumber), pdf.numPages);
@@ -282,7 +289,9 @@ export async function extractPdfPalette(pdfUrl, pageNumber, fallbackColor) {
 
         return buildPalette(overallPalette.primary, overallPalette.secondary, { left, right });
       } finally {
-        await pdf.destroy();
+        // Cuma destroy kalau kita yang bikin document-nya sendiri — pdf yg dipinjam
+        // dari <Document> masih dipakai viewer, destroy bakal bikin viewer rusak.
+        if (ownsDocument) await pdf.destroy();
       }
     })
     .catch(() => fallbackPalette);
