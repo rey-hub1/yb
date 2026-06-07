@@ -19,13 +19,13 @@ const COLOR_NAMES = ["Kuning", "Peach", "Mint", "Pink", "Biru", "Lavender"];
 function timeAgo(iso) {
     const d = new Date(iso);
     const s = Math.floor((Date.now() - d.getTime()) / 1000);
-    if (s < 60) return "baru saja";
+    if (s < 60) return "baru";
     const m = Math.floor(s / 60);
-    if (m < 60) return `${m} menit lalu`;
+    if (m < 60) return `${m}mnt`;
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h} jam lalu`;
+    if (h < 24) return `${h}jam`;
     const hari = Math.floor(h / 24);
-    if (hari < 30) return `${hari} hari lalu`;
+    if (hari < 30) return `${hari}hr`;
     return d.toLocaleDateString("id-ID", {
         day: "numeric",
         month: "short",

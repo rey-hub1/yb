@@ -1491,6 +1491,7 @@ export default function YearbookApp() {
               <span>mahawaluya.pangestu_</span>
             </a>
           </div>
+          <p className="yb-footer-cta">Mau bikin web kaya gini? Cek akun gua 👇</p>
           <p className="yb-footer-credit">Dibuat oleh</p>
           <div className="yb-footer-socials">
             <a href="https://github.com/rey-hub1" target="_blank" rel="noopener noreferrer" className="yb-footer-social-link">
@@ -2510,6 +2511,8 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   transform: rotate(var(--rot, 0deg));
   box-shadow: 2px 4px 11px rgba(60, 42, 24, 0.16);
   transition: transform 0.22s ease, box-shadow 0.22s ease;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
 }
 .yb-note:hover {
   transform: rotate(0deg) scale(1.035);
@@ -2521,11 +2524,10 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   position: absolute; top: -7px; left: 50%;
   width: 46px; height: 15px; margin-left: -23px;
   transform: rotate(var(--tape-rot, 0deg));
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.5);
   border-left: 1px dashed rgba(255,255,255,0.55);
   border-right: 1px dashed rgba(255,255,255,0.55);
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  backdrop-filter: blur(1px);
 }
 .yb-note-body {
   margin: 0 0 7px; color: #33291d;
@@ -2551,6 +2553,18 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 .yb-note--t3 { background: #fbd6e2; }
 .yb-note--t4 { background: #d6e6f4; }
 .yb-note--t5 { background: #ece2f7; }
+/* t6 — putih eksklusif, cuma bisa di-set manual via DB (color=6) */
+.yb-note--t6 {
+  background: linear-gradient(160deg, #ffffff 0%, #fbfaf7 100%);
+  box-shadow:
+    2px 4px 11px rgba(60, 42, 24, 0.14),
+    inset 0 0 0 1px rgba(180, 150, 110, 0.18);
+}
+.yb-note--t6:hover {
+  box-shadow:
+    4px 10px 24px rgba(60, 42, 24, 0.24),
+    inset 0 0 0 1px rgba(180, 150, 110, 0.22);
+}
 
 .yb-note--pinned {
   box-shadow:
@@ -2730,6 +2744,11 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   display: flex; align-items: center; justify-content: center;
   gap: 20px; margin-top: 10px; margin-bottom: 4px;
   flex-wrap: wrap;
+}
+.yb-footer-cta {
+  font-family: var(--yb-hand-font);
+  font-size: 18px; color: var(--yb-accent);
+  margin: 28px 0 0;
 }
 .yb-footer-credit {
   font-family: var(--yb-page-font);
