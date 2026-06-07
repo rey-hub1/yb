@@ -33,11 +33,13 @@ Deno.serve(async (req) => {
   const ipSalt = Deno.env.get("IP_SALT");
   if (!ipSalt) return jsonErr("Server misconfigured.", 500);
 
-  // Ambil IP terakhir di x-forwarded-for — proxy Supabase menambah IP real di akhir.
-  // IP pertama bisa dipalsukan client untuk bypass cooldown.
+  // IP client = entry PERTAMA x-forwarded-for. Entry terakhir di infra Supabase
+  // adalah edge CloudFront yang rotasi tiap request (bukan client) — keying ke situ
+  // bikin cooldown tak pernah jalan. x-real-ip null di sini, jadi pakai XFF[0].
+  const realIp = req.headers.get("x-real-ip");
   const xffHeader = req.headers.get("x-forwarded-for") ?? "";
   const xffIps = xffHeader.split(",").map((s) => s.trim()).filter(Boolean);
-  const rawIp = xffIps.length > 0 ? xffIps[xffIps.length - 1] : "unknown";
+  const rawIp = realIp?.trim() || (xffIps.length > 0 ? xffIps[0] : "unknown");
   const ipHash = await hashIp(rawIp, ipSalt);
 
   const supabase = createClient(

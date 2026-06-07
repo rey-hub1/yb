@@ -406,7 +406,7 @@ export default function AdminNotes({ token: tokenProp, embedded = false }) {
         if (!supabase) { setGlobalErr("Supabase belum dikonfigurasi."); setLoading(false); return; }
         setLoading(true);
         const { data, error } = await supabase
-            .from("messages").select("*")
+            .from("messages").select("id, name, body, color, created_at")
             .order("created_at", { ascending: false }).limit(500);
         if (error) setGlobalErr("Gagal memuat pesan.");
         else { setGlobalErr(""); setMessages(data || []); }

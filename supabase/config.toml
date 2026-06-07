@@ -2,7 +2,7 @@ project_id = "xukiivqxugrjugngkmex"
 
 # post-message = endpoint publik. Punya rate-limit + validasi + service role
 # sendiri, jadi gateway JWT dimatikan supaya publishable key (sb_publishable_…)
-# bisa lewat. delete-message TETAP verify_jwt default (jalur admin).
+# bisa lewat.
 [functions.post-message]
 verify_jwt = false
 
@@ -10,4 +10,11 @@ verify_jwt = false
 # role. Gateway JWT dimatikan supaya publishable key (sb_publishable_…) bisa lewat,
 # konsisten dgn post-message.
 [functions.set-cover]
+verify_jwt = false
+
+# delete-message = jalur admin SAMA dgn set-cover: auth via x-admin-token sendiri.
+# callAdmin() TIDAK kirim header Authorization, jadi gateway JWT HARUS dimatikan —
+# kalau tidak, gateway nolak duluan (UNAUTHORIZED_NO_AUTH_HEADER) dan fungsi tak
+# pernah jalan. verify_jwt=true bikin admin login & hapus pesan mati total.
+[functions.delete-message]
 verify_jwt = false

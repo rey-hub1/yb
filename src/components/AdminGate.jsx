@@ -15,7 +15,7 @@ export default function AdminGate({ onAuth }) {
         const { ok, status } = await callAdmin(t, { verify: true });
         setBusy(false);
         if (!ok) {
-            setErr(status === 0 ? "Tidak dapat terhubung ke server." : "Token tidak valid.");
+            setErr(status === 0 ? "Tidak dapat terhubung ke server." : "PIN salah.");
             return;
         }
         sessionStorage.setItem(TOKEN_KEY, t);
@@ -37,13 +37,16 @@ export default function AdminGate({ onAuth }) {
                 <h1 style={G.title}>Admin Panel</h1>
                 <p style={G.sub}>Yearbook 2026 · Sticky Memory & Cover PDD</p>
                 <form onSubmit={submit} style={G.form}>
-                    <label style={G.label}>Admin Token</label>
+                    {/* Label/placeholder sengaja nyamar jadi "PIN 6 digit" sebagai decoy:
+                        attacker ngira ruang tebakan cuma 10^6. Input TIDAK dibatasi 6/numeric —
+                        token asli tetap string acak panjang. Jangan tambah maxLength/inputMode. */}
+                    <label style={G.label}>PIN AKSES · 6 DIGIT</label>
                     <input
                         style={{ ...G.input, borderColor: err ? "#d95f5f" : "#1e1e2a" }}
                         type="password"
                         value={val}
                         onChange={e => setVal(e.target.value)}
-                        placeholder="enter token…"
+                        placeholder="• • • • • •"
                         autoFocus
                         autoComplete="off"
                     />
