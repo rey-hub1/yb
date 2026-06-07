@@ -26,20 +26,24 @@ function useBookScale() {
   const calc = () => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const marginX = vw < 768 ? 24 : 96;   // sisi kiri-kanan
-    const reservedY = vw < 768 ? 150 : 180; // header + pagination + napas
-    const fitW = (vw - marginX) / (PAGE_W * 2);
+    // HP → mode 1 halaman (portrait): halaman penuh selebar layar, gak kekecilan.
+    // Laptop → spread 2 halaman.
+    const portrait = vw < 768;
+    const marginX = portrait ? 24 : 96;   // sisi kiri-kanan
+    const reservedY = portrait ? 150 : 180; // header + pagination + napas
+    const pagesAcross = portrait ? 1 : 2;
+    const fitW = (vw - marginX) / (PAGE_W * pagesAcross);
     const fitH = (vh - reservedY) / PAGE_H;
     const s = Math.min(fitW, fitH);
     // boleh gede di layar besar (sampai 1.45×) biar nggak kerasa kayak HP di desktop
-    return Math.max(0.3, Math.min(s, 1.45));
+    return { scale: Math.max(0.3, Math.min(s, 1.45)), portrait };
   };
-  const [scale, setScale] = useState(calc);
+  const [val, setVal] = useState(calc);
   useEffect(() => {
     let timeoutId;
     const fn = () => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => setScale(calc()), 100);
+      timeoutId = setTimeout(() => setVal(calc()), 100);
     };
     window.addEventListener("resize", fn);
     return () => {
@@ -47,7 +51,7 @@ function useBookScale() {
       window.removeEventListener("resize", fn);
     };
   }, []);
-  return scale;
+  return val;
 }
 
 // ─── FlipPage wrapper ─────────────────────────────────────────────────────────
@@ -183,7 +187,7 @@ function playFlipSound(ctxRef) {
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.11, now + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
 
     src.connect(lp).connect(gain).connect(ctx.destination);
@@ -233,14 +237,29 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
       return next;
     });
   }, []);
-  const scale = useBookScale();
+  const { scale, portrait } = useBookScale();
+  const pageStep = portrait ? 1 : 2;
+  const portraitRef = useRef(portrait);
+  portraitRef.current = portrait;
   // Ukuran piksel asli — flipbook dirender pada ukuran ini (bukan CSS scale),
   // supaya koordinat sentuh page-flip cocok & swipe/flip jalan di HP.
   const dispW = Math.max(1, Math.round(PAGE_W * scale));
   const dispH = Math.max(1, Math.round(PAGE_H * scale));
 
-  const flipPrev = useCallback(() => flipBookRef.current?.pageFlip().flipPrev(), []);
-  const flipNext = useCallback(() => flipBookRef.current?.pageFlip().flipNext(), []);
+  // Portrait (HP): flipPrev() react-pageflip bug di single page (corner-detection
+  // ngaco). turnToPrevPage/Next reliable (instan, tanpa animasi). Desktop animasi.
+  const flipPrev = useCallback(() => {
+    const pf = flipBookRef.current?.pageFlip();
+    if (!pf) return;
+    if (portraitRef.current) pf.turnToPrevPage();
+    else pf.flipPrev();
+  }, []);
+  const flipNext = useCallback(() => {
+    const pf = flipBookRef.current?.pageFlip();
+    if (!pf) return;
+    if (portraitRef.current) pf.turnToNextPage();
+    else pf.flipNext();
+  }, []);
   const jumpTo = useCallback((p) => flipBookRef.current?.pageFlip().turnToPage(p), []);
 
   // Input sendiri (bukan dari react-pageflip) supaya konsisten di HP/tablet/PC.
@@ -406,9 +425,9 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
     }, 400);
   }, [displayedThemeStyle, spreadThemeStyle]);
 
-  const totalSpreads  = numPages ? Math.ceil(numPages / 2) : 0;
-  const atEnd = numPages ? currentPage + 2 >= numPages : false;
-  const currentSpread = atEnd ? Math.max(0, totalSpreads - 1) : Math.floor(currentPage / 2);
+  const totalSpreads  = numPages ? Math.ceil(numPages / pageStep) : 0;
+  const atEnd = numPages ? currentPage + pageStep >= numPages : false;
+  const currentSpread = atEnd ? Math.max(0, totalSpreads - 1) : Math.floor(currentPage / pageStep);
   const progressPct = totalSpreads ? (atEnd ? 100 : ((currentSpread + 1) / totalSpreads) * 100) : 0;
   const loading = !documentReady || !firstPageReady;
   // Device/koneksi lemah → render lebih sedikit halaman sekaligus (tiap halaman
@@ -437,7 +456,7 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
           {numPages && (
             <span className="yb-viewer-count">
               <strong>{String(currentPage + 1).padStart(2, "0")}</strong>
-              <span>–{Math.min(currentPage + 2, numPages)}</span>
+              {!portrait && <span>–{Math.min(currentPage + 2, numPages)}</span>}
               <em>/ {numPages}</em>
             </span>
           )}
@@ -538,7 +557,7 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
           {documentReady && !error && numPages && (
             <div className={`yb-book-shell${isFlipping ? " is-flipping" : ""}`}>
               <HTMLFlipBook
-                key={dispW}
+                key={`${dispW}-${portrait ? "p" : "s"}`}
                 ref={flipBookRef}
                 width={dispW} height={dispH}
                 size="fixed"
@@ -548,8 +567,10 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
                 showCover={true} flippingTime={780}
                 drawShadow={true} maxShadowOpacity={0.55}
                 showPageCorners={false} disableFlipByClick={true}
-                useMouseEvents={false}
-                usePortrait={false} mobileScrollSupport={false}
+                // HP (portrait): pakai input bawaan library → swipe animasi native.
+                // Desktop: input custom (tap-layer), library-nya dimatiin.
+                useMouseEvents={portrait}
+                usePortrait={portrait} mobileScrollSupport={portrait}
                 onFlip={(e) => setCurrentPage(e.data)}
                 onChangeState={(e) => {
                   const flipping = e.data === "flipping" || e.data === "user_fold";
@@ -578,11 +599,13 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
                   </FlipPage>
                 ))}
               </HTMLFlipBook>
-              <div
-                className="yb-tap-layer"
-                onPointerDown={onBookPointerDown}
-                onPointerUp={onBookPointerUp}
-              />
+              {!portrait && (
+                <div
+                  className="yb-tap-layer"
+                  onPointerDown={onBookPointerDown}
+                  onPointerUp={onBookPointerUp}
+                />
+              )}
             </div>
           )}
         </Document>
@@ -595,7 +618,7 @@ function FlipBookViewer({ classData, onClose, viewerThemeStyle }) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
           </button>
 
-          <button onClick={flipNext} className="yb-nav-arrow yb-nav-next" disabled={currentPage + 2 >= numPages} aria-label="Halaman berikutnya">
+          <button onClick={flipNext} className="yb-nav-arrow yb-nav-next" disabled={currentPage + pageStep >= numPages} aria-label="Halaman berikutnya">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
           </button>
 
@@ -1229,7 +1252,6 @@ function SinceGraduation() {
   return (
     <section className="yb-since" id="sejak-kelulusan">
       <div className="yb-since-inner">
-        <span className="yb-section-index yb-since-index">4</span>
         <p className="yb-since-kicker">Sejak Kelulusan</p>
         <h2 className="yb-since-title">Sudah sejauh ini kita melangkah</h2>
         <p className="yb-since-date">7 Mei 2026</p>
@@ -2499,6 +2521,43 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   align-items: flex-start; justify-content: center;
   gap: 11px 9px;
 }
+
+/* papan bisa di-collapse — default tampil ~1.5 baris (laptop) / 2 baris (HP) */
+.yb-board-wrap { position: relative; }
+.yb-board-wrap.is-collapsed {
+  max-height: 270px;
+  overflow: hidden;
+  /* padding+margin biar note miring di tepi gak ke-crop batas clip */
+  padding: 0 22px;
+  margin: 0 -22px;
+}
+.yb-board-fade {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 96px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--yb-bg) 86%);
+}
+.yb-board-toggle-wrap { text-align: center; margin-top: 18px; }
+.yb-board-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--yb-page-font);
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--yb-ink-mid);
+  padding: 10px 20px;
+  border: 1px solid var(--yb-border);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.5);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.yb-board-toggle:hover {
+  color: var(--yb-accent); border-color: var(--yb-accent);
+  background: rgba(255,255,255,0.8);
+}
+.yb-board-toggle-ic { transition: transform 0.25s ease; }
+.yb-board-toggle-ic.is-open { transform: rotate(180deg); }
+@media (max-width: 640px) {
+  .yb-board-wrap.is-collapsed { max-height: 360px; }
+}
 .yb-board-empty {
   flex-basis: 100%; text-align: center;
   font-family: var(--yb-hand-font); font-size: 22px;
@@ -2553,17 +2612,34 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 .yb-note--t3 { background: #fbd6e2; }
 .yb-note--t4 { background: #d6e6f4; }
 .yb-note--t5 { background: #ece2f7; }
-/* t6 — putih eksklusif, cuma bisa di-set manual via DB (color=6) */
+/* t6 — eksklusif kontras tinggi (color=6) */
 .yb-note--t6 {
-  background: linear-gradient(160deg, #ffffff 0%, #fbfaf7 100%);
+  background: linear-gradient(160deg, #ffffff 0%, #fcebc2 100%);
   box-shadow:
-    2px 4px 11px rgba(60, 42, 24, 0.14),
-    inset 0 0 0 1px rgba(180, 150, 110, 0.18);
+    2px 6px 16px rgba(60, 42, 24, 0.2),
+    inset 0 0 0 2px rgba(216, 182, 114, 0.6);
+  transform: rotate(var(--rot, 0deg)) scale(1.15) !important;
 }
 .yb-note--t6:hover {
   box-shadow:
-    4px 10px 24px rgba(60, 42, 24, 0.24),
-    inset 0 0 0 1px rgba(180, 150, 110, 0.22);
+    4px 14px 30px rgba(60, 42, 24, 0.25),
+    inset 0 0 0 2px rgba(216, 182, 114, 0.8),
+    0 0 12px rgba(216, 182, 114, 0.3);
+  transform: rotate(0deg) scale(1.22) !important;
+  z-index: 5;
+}
+.yb-note--t6 .yb-note-body {
+  color: #231c15;
+  font-weight: 600;
+}
+.yb-note--t6 .yb-note-meta {
+  border-top-color: rgba(184, 94, 69, 0.3);
+}
+.yb-note--t6 .yb-note-from {
+  color: #b85e45;
+}
+.yb-note--t6 .yb-note-time {
+  color: rgba(35, 28, 21, 0.5);
 }
 
 .yb-note--pinned {
@@ -2642,58 +2718,58 @@ button { border: none; background: none; cursor: pointer; outline: none; }
 /* ── Sejak Kelulusan (count-up) ── */
 .yb-since {
   position: relative; z-index: 1;
-  padding: 80px 24px 60px;
+  padding: 40px 24px 32px;
   text-align: center;
 }
 .yb-since-inner { max-width: 760px; margin: 0 auto; }
 .yb-since-index {
-  display: inline-block; margin-bottom: 14px;
+  display: inline-block; margin-bottom: 8px;
 }
 .yb-since-kicker {
   font-family: var(--yb-page-font);
   font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase;
-  color: var(--yb-accent); margin: 0 0 10px;
+  color: var(--yb-accent); margin: 0 0 6px;
 }
 .yb-since-title {
   font-family: var(--yb-title-font);
-  font-size: clamp(22px, 4vw, 34px); line-height: 1.2;
-  color: var(--yb-ink); margin: 0 0 8px; font-weight: 400;
+  font-size: clamp(20px, 3.4vw, 28px); line-height: 1.2;
+  color: var(--yb-ink); margin: 0 0 4px; font-weight: 400;
 }
 .yb-since-date {
   font-family: var(--yb-page-font); font-style: italic;
-  font-size: 13px; color: var(--yb-ink-faint); margin: 0 0 32px;
+  font-size: 13px; color: var(--yb-ink-faint); margin: 0 0 18px;
 }
 .yb-since-grid {
   display: flex; justify-content: center; flex-wrap: wrap;
-  gap: 14px;
+  gap: 12px;
 }
 .yb-since-cell {
   display: flex; flex-direction: column; align-items: center;
-  min-width: 78px;
-  padding: 18px 14px;
+  min-width: 72px;
+  padding: 12px 14px;
   border: 1px solid var(--yb-border);
   border-radius: 10px;
   background: rgba(255,255,255,0.4);
 }
 .yb-since-num {
   font-family: var(--yb-title-font);
-  font-size: clamp(28px, 6vw, 44px); line-height: 1;
+  font-size: clamp(26px, 5vw, 38px); line-height: 1;
   color: var(--yb-ink);
   font-variant-numeric: tabular-nums;
 }
 .yb-since-lbl {
   font-family: var(--yb-page-font);
   font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
-  color: var(--yb-ink-mid); margin-top: 9px;
+  color: var(--yb-ink-mid); margin-top: 6px;
 }
 .yb-since-note {
   font-family: var(--yb-page-font); font-style: italic;
-  font-size: 12.5px; color: var(--yb-ink-faint); margin: 28px 0 0;
+  font-size: 12.5px; color: var(--yb-ink-faint); margin: 16px 0 0;
 }
 @media (max-width: 480px) {
-  .yb-since { padding: 60px 16px 48px; }
+  .yb-since { padding: 32px 16px 28px; }
   .yb-since-grid { gap: 9px; }
-  .yb-since-cell { min-width: 0; flex: 1 1 64px; padding: 14px 8px; }
+  .yb-since-cell { min-width: 0; flex: 1 1 64px; padding: 10px 8px; }
 }
 
 .yb-footer {
@@ -2970,6 +3046,10 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   opacity: 1; transition: opacity 0.25s ease;
 }
 .yb-book-shell.is-flipping::after { opacity: 0; }
+/* HP single-page: gak ada gutter tengah → sembunyiin seam-nya */
+@media (max-width: 768px) {
+  .yb-book-shell::after { display: none; }
+}
 
 /* ── Loading ─────────────────────────────── */
 .yb-loading-state {
@@ -3196,6 +3276,18 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   background: var(--yb-overlay-accent);
   box-shadow: 0 0 10px var(--yb-overlay-accent);
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* HP: panah pagination dikontrasin — keliatan jelas sbg tombol, gak kelewat */
+@media (max-width: 768px) {
+  .yb-pagination { background: rgba(0,0,0,0.5); }
+  .yb-page-jump {
+    color: #fff;
+    background: rgba(255,255,255,0.16);
+    border: 1px solid rgba(255,255,255,0.35);
+  }
+  .yb-page-jump svg { width: 18px; height: 18px; }
+  .yb-page-jump:disabled { opacity: 0.28; }
 }
 
 /* ════════════════════════════════════════
@@ -3808,5 +3900,250 @@ button { border: none; background: none; cursor: pointer; outline: none; }
   .yb-doc-card .yb-sf-card-sub { font-size: 10px; }
   .yb-doc-sub { margin-top: 36px; }
   .yb-doc-intro { padding: 0 16px; }
+}
+
+/* ── STORY VIEWER ─────────────────────────────────────────────────────── */
+.yb-story-overlay {
+  position: fixed; inset: 0; z-index: 999999;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; -webkit-tap-highlight-color: transparent;
+  animation: storyOverlayIn .4s ease both;
+}
+.yb-story-overlay::after { /* vignette tepi biar fokus ke kartu */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 80% at 50% 45%, transparent 38%, rgba(0,0,0,0.55) 100%);
+}
+@keyframes storyOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+
+.yb-story-glow {
+  position: absolute; top: 42%; left: 50%; width: 72vmin; height: 72vmin;
+  transform: translate(-50%, -50%); pointer-events: none; filter: blur(8px);
+  animation: storyGlow 6s ease-in-out infinite alternate;
+}
+@keyframes storyGlow {
+  0%   { transform: translate(-50%, -50%) scale(.82); opacity: .55; }
+  100% { transform: translate(-50%, -56%) scale(1.18); opacity: 1; }
+}
+
+/* progress bars (segmen story) */
+.yb-story-bars {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  display: flex; gap: 5px; padding: 16px 16px 0;
+}
+.yb-story-bar {
+  flex: 1; height: 3px; border-radius: 3px; overflow: hidden;
+  background: rgba(255,255,255,0.22);
+}
+.yb-story-bar-fill {
+  display: block; height: 100%; background: #fff; border-radius: 3px;
+  box-shadow: 0 0 8px rgba(255,255,255,.55);
+}
+
+.yb-story-top {
+  position: absolute; top: 28px; left: 0; right: 0; z-index: 7;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 18px; pointer-events: none;
+}
+.yb-story-counter {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .15em;
+  color: rgba(255,255,255,.72); text-transform: uppercase;
+}
+.yb-story-close {
+  pointer-events: auto; display: flex; color: #fff; opacity: .75; padding: 8px;
+  background: rgba(255,255,255,.12); border-radius: 50%; border: none; cursor: pointer;
+  backdrop-filter: blur(4px); transition: transform .25s, opacity .2s, background .2s;
+}
+.yb-story-close:hover { opacity: 1; transform: rotate(90deg) scale(1.08); background: rgba(255,255,255,.22); }
+
+/* zona tap kiri / kanan */
+.yb-story-zone {
+  position: absolute; top: 0; bottom: 0; z-index: 3;
+  background: transparent; border: none; cursor: pointer; padding: 0;
+}
+.yb-story-zone--prev { left: 0; width: 35%; }
+.yb-story-zone--next { right: 0; width: 65%; }
+
+/* panggung kartu — pointer none, anak interaktif aktif sendiri */
+.yb-story-stage {
+  position: relative; z-index: 4; pointer-events: none;
+  width: min(86vw, 460px);
+  display: flex; flex-direction: column; align-items: center;
+}
+.yb-story-card {
+  position: relative; width: 100%;
+  padding: 56px 40px 30px; border-radius: 12px;
+  background: #fef3c0; color: #2a2018;
+  box-shadow: 0 34px 80px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.3);
+  animation: storyCardIn .55s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes storyCardIn {
+  from { opacity: 0; transform: translateY(28px) scale(.93) rotate(-1.4deg); }
+  to   { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+.yb-story-quote {
+  position: absolute; top: 4px; left: 26px;
+  font-family: 'Playfair Display', serif; font-size: 90px; line-height: 1;
+  opacity: .55; user-select: none;
+}
+.yb-story-text {
+  position: relative; margin: 0;
+  font-family: 'Caveat', cursive;
+  font-size: clamp(26px, 6.4vw, 38px); line-height: 1.32; font-weight: 600;
+  color: #241c14; word-break: break-word; overflow-wrap: anywhere;
+}
+.yb-story-sign {
+  margin-top: 26px; padding-top: 16px; border-top: 1px dashed rgba(80,60,40,.28);
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+}
+.yb-story-author {
+  font-family: 'Caveat', cursive; font-size: 26px; font-weight: 700; color: #b85e45;
+}
+.yb-story-time {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .06em;
+  color: rgba(80,60,40,.5); text-transform: uppercase; white-space: nowrap;
+}
+.yb-story-pinned {
+  position: absolute; top: 16px; right: 18px;
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .2em;
+  text-transform: uppercase; color: #b85e45; opacity: .8;
+}
+/* warna kertas kartu — sinkron .yb-note--tN */
+.yb-story-card--t0 { background: #fef3c0; }
+.yb-story-card--t1 { background: #fcded0; }
+.yb-story-card--t2 { background: #d7eed9; }
+.yb-story-card--t3 { background: #fbd6e2; }
+.yb-story-card--t4 { background: #d6e6f4; }
+.yb-story-card--t5 { background: #ece2f7; }
+.yb-story-card--t6 {
+  background: linear-gradient(160deg, #ffffff 0%, #fcebc2 100%);
+  box-shadow: 0 34px 80px rgba(0,0,0,.5), inset 0 0 0 2px rgba(216,182,114,.6);
+}
+
+.yb-story-share {
+  pointer-events: auto; margin-top: 26px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 22px; border-radius: 40px;
+  background: rgba(255,255,255,.12); color: #fff;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .07em;
+  border: 1px solid rgba(255,255,255,.26); cursor: pointer;
+  backdrop-filter: blur(6px); transition: background .2s, transform .15s;
+}
+.yb-story-share:hover { background: rgba(255,255,255,.22); transform: translateY(-2px); }
+
+.yb-story-hint {
+  position: absolute; bottom: 20px; left: 0; right: 0; z-index: 4; margin: 0;
+  text-align: center; pointer-events: none;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .08em;
+  color: rgba(255,255,255,.4);
+}
+@media (max-width: 480px) {
+  .yb-story-card { padding: 48px 28px 26px; }
+  .yb-story-quote { font-size: 70px; left: 18px; }
+  .yb-story-hint { font-size: 9px; padding: 0 16px; }
+}
+
+/* ── SKIN / TEMA STORY ─────────────────────────────────────────────────── */
+.yb-story-bg--aurora {
+  background: linear-gradient(125deg, #1a2a6c 0%, #5b2c83 30%, #b21f6e 60%, #fdbb2d 100%);
+  background-size: 220% 220%;
+  animation: storyAurora 14s ease infinite;
+}
+@keyframes storyAurora {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.yb-story-bg--noir {
+  background: radial-gradient(circle at 50% 32%, #2c2c32 0%, #111114 45%, #050506 80%);
+}
+.yb-story-bg--senja {
+  background: linear-gradient(165deg, #ff7e5f 0%, #feb47b 32%, #7b4397 72%, #2b1055 100%);
+}
+/* noir pakai serif elegan untuk teks */
+.yb-story-bg--noir .yb-story-text {
+  font-family: 'Playfair Display', serif; font-style: italic; font-weight: 500;
+}
+
+/* pemilih tema */
+.yb-story-skins {
+  position: absolute; bottom: 48px; left: 0; right: 0; z-index: 6;
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+  padding: 0 16px; pointer-events: none;
+}
+.yb-story-skin-btn {
+  pointer-events: auto; position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 7px 16px; border-radius: 30px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.22);
+  background-size: 200% 200%;
+  font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: .06em;
+  color: #fff; transition: transform .15s, border-color .2s, box-shadow .2s;
+}
+.yb-story-skin-btn span {
+  position: relative; z-index: 1;
+  text-shadow: 0 1px 3px rgba(0,0,0,.6);
+}
+.yb-story-skin-btn::before { /* scrim biar teks kebaca di atas swatch */
+  content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.28);
+}
+.yb-story-skin-btn:hover { transform: translateY(-2px); }
+.yb-story-skin-btn.is-active {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px #fff, 0 6px 18px rgba(0,0,0,.35);
+}
+
+/* poster offscreen untuk capture share — TIDAK terlihat user */
+.yb-story-poster {
+  position: fixed; left: -99999px; top: 0;
+  width: 540px; height: 960px; overflow: hidden; /* 9:16 — story IG */
+  display: flex; align-items: center; justify-content: center;
+}
+.yb-story-poster-inner {
+  position: relative; width: 100%; height: 100%; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 48px 120px;
+}
+.yb-story-poster .yb-story-card {
+  width: min(420px, 100%); animation: none; transform: none;
+  box-shadow: 0 30px 60px rgba(0,0,0,.45);
+}
+.yb-story-poster-mark {
+  position: absolute; bottom: 56px; left: 0; right: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  font-family: 'JetBrains Mono', monospace; text-shadow: 0 1px 4px rgba(0,0,0,.5);
+}
+.yb-story-poster-title {
+  font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+  color: rgba(255,255,255,.78);
+}
+.yb-story-poster-url {
+  font-size: 11px; letter-spacing: .08em; color: rgba(255,255,255,.62);
+}
+
+/* panah navigasi terlihat */
+.yb-story-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22);
+  color: #fff; cursor: pointer; backdrop-filter: blur(4px);
+  transition: background .2s, transform .15s, opacity .2s;
+}
+.yb-story-arrow--prev { left: 18px; }
+.yb-story-arrow--next { right: 18px; }
+.yb-story-arrow:hover:not(:disabled) { background: rgba(255,255,255,.24); transform: translateY(-50%) scale(1.08); }
+.yb-story-arrow:disabled { opacity: 0; pointer-events: none; }
+@media (max-width: 480px) {
+  .yb-story-arrow { width: 40px; height: 40px; }
+  .yb-story-arrow--prev { left: 10px; }
+  .yb-story-arrow--next { right: 10px; }
+}
+
+.yb-story-spin { animation: storySpin .8s linear infinite; }
+@keyframes storySpin { to { transform: rotate(360deg); } }
+
+@media (max-width: 480px) {
+  .yb-story-skins { bottom: 44px; }
+  .yb-story-skin-btn { padding: 6px 13px; font-size: 10px; }
 }
 `;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase, POST_MESSAGE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
 
 const MAX_LEN = 80;
@@ -14,6 +15,28 @@ const NOTE_COLORS = [
     "#ece2f7",
 ];
 const COLOR_NAMES = ["Kuning", "Peach", "Mint", "Pink", "Biru", "Lavender"];
+
+// tema latar story per tone — gradient gelap + warna aksen glow (sinkron NOTE_COLORS, +t6 emas)
+const STORY_THEME = [
+    { from: "#4a3713", to: "#0c0904", accent: "#f4c850" }, // kuning
+    { from: "#4a2218", to: "#0c0605", accent: "#f5a583" }, // peach
+    { from: "#143a24", to: "#050d08", accent: "#82dd9d" }, // mint
+    { from: "#441a2b", to: "#0c0508", accent: "#f593bc" }, // pink
+    { from: "#143049", to: "#04080e", accent: "#83bdf6" }, // biru
+    { from: "#2c1844", to: "#08050e", accent: "#bb95f5" }, // lavender
+    { from: "#4a3a10", to: "#0c0803", accent: "#f0cd6a" }, // t6 emas
+];
+const STORY_MS = 7000; // durasi auto-advance per note
+
+// skin/tema story yang bisa dipilih user — berlaku untuk semua note (persist localStorage).
+// perTone=true → latar pakai gradient warna note. perTone=false → latar dari CSS .yb-story-bg--<key>
+const STORY_SKINS = [
+    { key: "paper", name: "Kertas", perTone: true },
+    { key: "aurora", name: "Aurora", perTone: false },
+    { key: "noir", name: "Noir", perTone: false },
+    { key: "senja", name: "Senja", perTone: false },
+];
+const SKIN_STORAGE = "yb-story-skin";
 
 // waktu relatif sederhana (Bahasa Indonesia)
 function timeAgo(iso) {
@@ -44,6 +67,228 @@ function noteVariant(id = "") {
     };
 }
 
+// ── STORY VIEWER ────────────────────────────────────────────────────────────
+// Putar note jadi cerita layar penuh: progress bar, auto-advance, tap kiri/kanan,
+// swipe, panah keyboard, tahan untuk jeda, tombol bagikan. Mirip story IG.
+function StoryViewer({ list, startIndex, onClose }) {
+    const [index, setIndex] = useState(startIndex);
+    const [progress, setProgress] = useState(0);
+    const [paused, setPaused] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [sharing, setSharing] = useState(false);
+    const [skinKey, setSkinKey] = useState(
+        () => localStorage.getItem(SKIN_STORAGE) || "paper",
+    );
+    const progRef = useRef(0);
+    const touchRef = useRef(null);
+    const downRef = useRef(0);
+    const posterRef = useRef(null);
+
+    const m = list[index];
+    const isPinned = (m.body ?? "").startsWith("/pin ");
+    const displayBody = isPinned ? m.body.slice(5) : m.body;
+    const v = noteVariant(m.id);
+    const t = m.color != null ? m.color : v.tone;
+    const theme = STORY_THEME[t] || STORY_THEME[0];
+    const skin = STORY_SKINS.find((s) => s.key === skinKey) || STORY_SKINS[0];
+    const skinBg = skin.perTone
+        ? { background: `linear-gradient(165deg, ${theme.from}, ${theme.to})` }
+        : undefined;
+
+    useEffect(() => { localStorage.setItem(SKIN_STORAGE, skinKey); }, [skinKey]);
+
+    const goNext = useCallback(() => {
+        setIndex((i) => { if (i < list.length - 1) return i + 1; onClose(); return i; });
+    }, [list.length, onClose]);
+    const goPrev = useCallback(() => setIndex((i) => (i > 0 ? i - 1 : i)), []);
+
+    // reset progress tiap pindah note
+    useEffect(() => { progRef.current = 0; setProgress(0); }, [index]);
+
+    // loop progress + auto-advance (rAF, dihentikan saat paused)
+    useEffect(() => {
+        let raf, last = performance.now();
+        const tick = (now) => {
+            const dt = now - last; last = now;
+            if (!paused) {
+                progRef.current += dt / STORY_MS;
+                if (progRef.current >= 1) { setProgress(1); goNext(); return; }
+                setProgress(progRef.current);
+            }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [index, paused, goNext]);
+
+    // keyboard + kunci scroll body
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === "Escape") onClose();
+            else if (e.key === "ArrowRight") goNext();
+            else if (e.key === "ArrowLeft") goPrev();
+        };
+        window.addEventListener("keydown", onKey);
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+    }, [onClose, goNext, goPrev]);
+
+    // tap vs tahan: <250ms = navigasi, lebih lama = jeda saja
+    const zoneDown = () => { downRef.current = Date.now(); setPaused(true); };
+    const zoneUp = (dir) => () => {
+        setPaused(false);
+        if (Date.now() - downRef.current < 250) (dir === "next" ? goNext : goPrev)();
+    };
+
+    const onTouchStart = (e) => {
+        touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+    const onTouchEnd = (e) => {
+        if (!touchRef.current) return;
+        const dx = e.changedTouches[0].clientX - touchRef.current.x;
+        const dy = e.changedTouches[0].clientY - touchRef.current.y;
+        touchRef.current = null;
+        if (Math.abs(dy) > 90 && Math.abs(dy) > Math.abs(dx)) { onClose(); return; } // swipe bawah = tutup
+        if (Math.abs(dx) > 50) (dx < 0 ? goNext : goPrev)();
+    };
+
+    // share sebagai GAMBAR (poster offscreen → html2canvas). Web Share file
+    // di mobile, fallback download di desktop. Hint/UI tidak ikut terambil.
+    const share = async () => {
+        if (sharing || !posterRef.current) return;
+        setSharing(true);
+        setPaused(true); // bekukan auto-advance saat ambil gambar
+        try {
+            await (document.fonts?.ready ?? Promise.resolve());
+            const { default: html2canvas } = await import("html2canvas");
+            const canvas = await html2canvas(posterRef.current, {
+                scale: 2, backgroundColor: null, useCORS: true, logging: false,
+            });
+            const blob = await new Promise((res) => canvas.toBlob(res, "image/png", 0.95));
+            if (!blob) throw new Error("no blob");
+            const file = new File([blob], `kenangan-${m.id}.png`, { type: "image/png" });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: "Sticky Memory" });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = file.name; a.click();
+                URL.revokeObjectURL(url);
+                setCopied(true); setTimeout(() => setCopied(false), 1800);
+            }
+        } catch { /* dibatalkan/diblokir — abaikan */ }
+        setSharing(false);
+        setPaused(false);
+    };
+
+    return createPortal(
+        <div
+            className={`yb-story-overlay yb-story-bg--${skin.key}`}
+            style={skinBg}
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+        >
+            <div className="yb-story-glow" aria-hidden="true" style={{ background: `radial-gradient(circle, ${theme.accent}55, transparent 70%)` }} />
+
+            {/* progress bars */}
+            <div className="yb-story-bars">
+                {list.map((_, i) => (
+                    <div key={i} className="yb-story-bar">
+                        <span className="yb-story-bar-fill" style={{ width: i < index ? "100%" : i === index ? `${progress * 100}%` : "0%" }} />
+                    </div>
+                ))}
+            </div>
+
+            {/* header */}
+            <div className="yb-story-top">
+                <span className="yb-story-counter">{index + 1} / {list.length}</span>
+                <button className="yb-story-close" onClick={onClose} aria-label="Tutup">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+
+            {/* zona tap kiri / kanan */}
+            <button className="yb-story-zone yb-story-zone--prev" aria-label="Sebelumnya" onPointerDown={zoneDown} onPointerUp={zoneUp("prev")} onPointerLeave={() => setPaused(false)} />
+            <button className="yb-story-zone yb-story-zone--next" aria-label="Berikutnya" onPointerDown={zoneDown} onPointerUp={zoneUp("next")} onPointerLeave={() => setPaused(false)} />
+
+            {/* panah navigasi terlihat */}
+            <button className="yb-story-arrow yb-story-arrow--prev" onClick={goPrev} disabled={index === 0} aria-label="Note sebelumnya">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <button className="yb-story-arrow yb-story-arrow--next" onClick={goNext} disabled={index === list.length - 1} aria-label="Note berikutnya">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+
+            {/* kartu */}
+            <div className="yb-story-stage">
+                <article key={m.id} className={`yb-story-card yb-story-card--t${t}`}>
+                    {isPinned && <span className="yb-story-pinned">disematkan</span>}
+                    <span className="yb-story-quote" aria-hidden="true" style={{ color: theme.accent }}>“</span>
+                    <p className="yb-story-text">{displayBody}</p>
+                    <div className="yb-story-sign">
+                        <span className="yb-story-author">{m.name?.trim() || "Anonim"}</span>
+                        <span className="yb-story-time">{timeAgo(m.created_at)}</span>
+                    </div>
+                </article>
+
+                <button className="yb-story-share" onClick={share} disabled={sharing}>
+                    {sharing ? (
+                        <><svg className="yb-story-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56" /></svg>menyiapkan…</>
+                    ) : copied ? (
+                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Tersimpan</>
+                    ) : (
+                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /><polyline points="8 8 12 4 16 8" /><line x1="12" y1="4" x2="12" y2="16" /></svg>Bagikan gambar</>
+                    )}
+                </button>
+            </div>
+
+            {/* pemilih tema */}
+            <div className="yb-story-skins">
+                {STORY_SKINS.map((s) => (
+                    <button
+                        key={s.key}
+                        type="button"
+                        className={`yb-story-skin-btn yb-story-bg--${s.key}${s.key === skin.key ? " is-active" : ""}`}
+                        style={s.perTone ? skinBg : undefined}
+                        onClick={() => setSkinKey(s.key)}
+                        title={s.name}
+                    >
+                        <span>{s.name}</span>
+                    </button>
+                ))}
+            </div>
+
+            {/* poster offscreen untuk di-capture jadi gambar share */}
+            <div
+                ref={posterRef}
+                className={`yb-story-poster yb-story-bg--${skin.key}`}
+                style={skinBg}
+                aria-hidden="true"
+            >
+                <div className="yb-story-poster-inner">
+                    <article className={`yb-story-card yb-story-card--t${t}`}>
+                        {isPinned && <span className="yb-story-pinned">disematkan</span>}
+                        <span className="yb-story-quote" style={{ color: theme.accent }}>“</span>
+                        <p className="yb-story-text">{displayBody}</p>
+                        <div className="yb-story-sign">
+                            <span className="yb-story-author">{m.name?.trim() || "Anonim"}</span>
+                            <span className="yb-story-time">{timeAgo(m.created_at)}</span>
+                        </div>
+                    </article>
+                    <div className="yb-story-poster-mark">
+                        <span className="yb-story-poster-title">Yearbook 2026 · Sticky Memory</span>
+                        <span className="yb-story-poster-url">yb-mahawaluya-pangestu.vercel.app</span>
+                    </div>
+                </div>
+            </div>
+        </div>,
+        document.body,
+    );
+}
+
 export default function MessageWall() {
     const [messages, setMessages] = useState([]);
     const [name, setName] = useState("");
@@ -56,6 +301,8 @@ export default function MessageWall() {
     const [justSent, setJustSent] = useState(false);
     const [highlightId, setHighlightId] = useState(null);
     const [error, setError] = useState("");
+    const [expanded, setExpanded] = useState(false);
+    const [story, setStory] = useState(null); // { list, index }
     const seenIds = useRef(new Set());
 
     // tambah satu note (realtime/optimistik) — dedup by id, tempel di atas
@@ -384,6 +631,10 @@ export default function MessageWall() {
                                   (m.name || "").toLowerCase().includes(q),
                           )
                         : messages;
+                    // collapse papan default — buka semua via tombol.
+                    // gak collapse saat lagi nyari (q aktif) atau note sedikit.
+                    const collapsible = !q && shown.length > 6;
+                    const collapsed = collapsible && !expanded;
                     return (
                         <>
                             <div className="yb-board-search">
@@ -426,14 +677,15 @@ export default function MessageWall() {
                                         : `Gak ada note yang nyebut "${query.trim()}"`}
                                 </p>
                             )}
+                            <div className={`yb-board-wrap${collapsed ? " is-collapsed" : ""}`}>
                             <div className="yb-board">
-                                {[...shown]
-                                    .sort((a, b) => {
+                                {(() => {
+                                  const sorted = [...shown].sort((a, b) => {
                                         const ap = (a.body ?? "").startsWith("/pin ") ? 1 : 0;
                                         const bp = (b.body ?? "").startsWith("/pin ") ? 1 : 0;
                                         return bp - ap;
-                                    })
-                                    .map((m) => {
+                                  });
+                                  return sorted.map((m, i) => {
                                     const isPinned = (m.body ?? "").startsWith("/pin ");
                                     const displayBody = isPinned ? m.body.slice(5) : m.body;
                                     const v = noteVariant(m.id);
@@ -441,10 +693,12 @@ export default function MessageWall() {
                                     return (
                                         <article
                                             key={m.id}
-                                            className={`yb-note yb-note--t${t}${isPinned ? " yb-note--pinned" : ""}${m.id === highlightId ? " yb-note--new" : ""}`}
+                                            onClick={() => setStory({ list: sorted, index: i })}
+                                            className={`yb-note yb-note--t${t}${isPinned ? " yb-note--pinned" : ""}${m.id === highlightId ? " yb-note--new" : ""} clickable-note`}
                                             style={{
                                                 "--rot": isPinned ? `${v.rot * 0.35}deg` : `${v.rot}deg`,
                                                 "--tape-rot": `${v.tapeRot}deg`,
+                                                cursor: "pointer",
                                             }}
                                         >
                                             {isPinned ? (
@@ -465,8 +719,40 @@ export default function MessageWall() {
                                             </div>
                                         </article>
                                     );
-                                })}
+                                  });
+                                })()}
                             </div>
+                                {collapsed && (
+                                    <div className="yb-board-fade" aria-hidden="true" />
+                                )}
+                            </div>
+                            {collapsible && (
+                                <div className="yb-board-toggle-wrap">
+                                    <button
+                                        type="button"
+                                        className="yb-board-toggle"
+                                        onClick={() => setExpanded((v) => !v)}
+                                    >
+                                        {expanded
+                                            ? "Tutup"
+                                            : `Lihat semua (${shown.length})`}
+                                        <svg
+                                            className={`yb-board-toggle-ic${expanded ? " is-open" : ""}`}
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            aria-hidden="true"
+                                        >
+                                            <polyline points="6 9 12 15 18 9" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            )}
                         </>
                     );
                 })()}
@@ -485,6 +771,15 @@ export default function MessageWall() {
                         </p>
                     )}
                 </div>
+            )}
+
+            {/* Story Viewer */}
+            {story && (
+                <StoryViewer
+                    list={story.list}
+                    startIndex={story.index}
+                    onClose={() => setStory(null)}
+                />
             )}
         </section>
     );

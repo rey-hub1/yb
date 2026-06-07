@@ -4,7 +4,7 @@ import { callAdmin, TOKEN_KEY, FONTS } from "../lib/adminShared";
 import AdminGate from "./AdminGate";
 
 const MAX_LEN = 80;
-const NOTE_COLORS = ["#fef3c0","#fcded0","#d7eed9","#fbd6e2","#d6e6f4","#ece2f7"];
+const NOTE_COLORS = ["#fef3c0","#fcded0","#d7eed9","#fbd6e2","#d6e6f4","#ece2f7","#ffffff"];
 
 function fmt(iso) {
     return new Date(iso).toLocaleString("id-ID", {

@@ -179,7 +179,8 @@ const COVERS = {
 };
 
 function box(id, name, sub, icon, disabled = false) {
-    return { id, name, sub, icon, disabled, covers: COVERS[id] || [] };
+    // coerce ke boolean — sebagian dipanggil dgn string "true"
+    return { id, name, sub, icon, disabled: disabled === true || disabled === "true", covers: COVERS[id] || [] };
 }
 
 export const DOC_SECTIONS = [
